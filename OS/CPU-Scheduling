@@ -21,7 +21,6 @@
 * 많은 수의 짧은 CPU 버스트와 적은 수의 긴 CPU 버스트 존재.
   * I/O-bound 프로그램: 많은 수의 짧은 CPU 버스트.
   * CPU-bound 프로그램: 적은 수의 긴 CPU 버스트.
-  <br><br>
   <p align="center">
   <img src = "./resources/CPUBurst.png">
   </p>
@@ -109,9 +108,9 @@
 * 각 큐는 일정 비율로 CPU 시간을 나누어 사용.
   * 포그라운드 큐 - RR, CPU 시간의 80%
   * 백그라운드 큐 - FCFS, CPU 시간의 20%
-  <p align="center">
-  <img src = "./resources/다단계큐스케줄링.png">
-  </p>
+<p align="center">
+<img src = "./resources/다단계큐스케줄링.png">
+</p>
 <br><br>
 
 ## 다단계 피드백 큐 스케줄링
