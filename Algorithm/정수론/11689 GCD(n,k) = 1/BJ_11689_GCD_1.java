@@ -15,6 +15,7 @@ public class BJ_11689_GCD_1 {
                 n /= p;
             }
         }
+
         if(n>1){
             result = result - result/n;
         }
