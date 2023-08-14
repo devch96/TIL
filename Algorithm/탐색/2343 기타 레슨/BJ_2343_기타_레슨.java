@@ -23,6 +23,7 @@ public class BJ_2343_기타_레슨 {
         System.out.println(binarySearch(arr,start,end,n,m));
     }
 
+
     private static int binarySearch(int[] arr, int start, int end, int n, int m){
         while(start <= end){
             int middle = start + (end - start)/2;
