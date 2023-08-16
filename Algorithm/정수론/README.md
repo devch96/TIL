@@ -48,4 +48,11 @@
 - 큰 수를 작은 수로 나누는 MOD 연산 수행.
 - 작은 수와 MOD 연산 결과값(나머지) 로 MOD 연산 수행.
 - 나머지가 0이 되는 순간의 작은 수가 최대 공약수.
-- 
+  ```java
+  // a,b 의 최대공약수
+  int Euclidean(int a, int b) {
+    if (b == 0)
+        return a;
+    return Euclidean(b, a % b);
+  }
+  ```
