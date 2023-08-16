@@ -59,6 +59,7 @@ public class BJ_2251_물통 {
         }
     }
 
+
     static class Node{
         int a;
         int b;
