@@ -1,6 +1,6 @@
-# [SILVER I] 기타 레슨 - 2343
+# [GOLD IV] 스도쿠 - 2580
 
-[문제 링크](https://www.acmicpc.net/problem/2343)
+[문제 링크](https://www.acmicpc.net/problem/2580)
 
 ### 분류
 
