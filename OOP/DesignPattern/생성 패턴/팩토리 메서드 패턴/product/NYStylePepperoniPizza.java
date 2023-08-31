@@ -1,4 +1,4 @@
-package Product;
+package product;
 
 public class NYStylePepperoniPizza implements Pizza{
     @Override

@@ -1,8 +1,8 @@
-package Factory;
+package factory;
 
-import Product.NYStyleCheesePizza;
-import Product.NYStylePepperoniPizza;
-import Product.Pizza;
+import product.NYStyleCheesePizza;
+import product.NYStylePepperoniPizza;
+import product.Pizza;
 
 public class NYPizzaStore extends PizzaStore{
     @Override

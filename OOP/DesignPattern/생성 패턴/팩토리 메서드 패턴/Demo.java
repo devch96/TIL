@@ -1,5 +1,5 @@
-import Factory.NYPizzaStore;
-import Factory.PizzaStore;
+import factory.NYPizzaStore;
+import factory.PizzaStore;
 
 public class Demo {
     public static void main(String[] args) {

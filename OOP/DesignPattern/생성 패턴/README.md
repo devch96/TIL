@@ -13,13 +13,13 @@
 
 ## 생성패턴 종류
 
-1. 추상 팩토리 패턴(Abstract Factory Pattern)
+1. 추상 팩토리 패턴(Abstract factory Pattern)
     : 동일한 주제의 다른 팩토리를 묶어 준다.
 
 2. 빌더 패턴(Builder Pattern)
     : 생성(construction)과 표기(representation)를 분리해 복잡한 객체를 생성한다.
 
-3. 팩토리 메서드 패턴(Factory Method Pattern)
+3. 팩토리 메서드 패턴(factory Method Pattern)
     : 생성할 객체의 클래스를 국한하지 않고 객체를 생성한다.
 
 4. 프로토타입 패턴(Prototype Pattern)

@@ -1,4 +1,4 @@
-# 팩토리 메서드 패턴(Factory Method Pattern)
+# 팩토리 메서드 패턴(factory Method Pattern)
 
 ## 팩토리 메서드 패턴이란?
 
@@ -9,11 +9,11 @@
 
 ## 팩토리 메서드 패턴 구조
 
-![Factory Method Pattern Structure](../../images/FactoryMethod.png)
+![factory Method Pattern Structure](../../images/FactoryMethod.png)
 
-- Product: 팩토리 메서드가 생성하는 객체의 인터페이스
-- ConcreteProduct: Product 클래스에 정의된 인터페이스를 실제로 구현하는 클래스
-- Creator: Product 타입의 객체를 반환하는 팩토리 메서드를 선언하는 클래스
+- product: 팩토리 메서드가 생성하는 객체의 인터페이스
+- ConcreteProduct: product 클래스에 정의된 인터페이스를 실제로 구현하는 클래스
+- Creator: product 타입의 객체를 반환하는 팩토리 메서드를 선언하는 클래스
 - ConcreteCreator: 팩토리 메서드를 재정의하여 ConcreteProduct의 인스턴스를 반환
 
 ## 팩토리 메소드 패턴의 구현 방법
@@ -29,7 +29,7 @@
 ## 팩토리 메서드의 장점
 
 - 팩토리 메서드 패턴은 응용프로그램에 국한된 클래스가 코드에 종속되지 않도록 해준다.
-- 응용프로그램은 Product 클래스에 정의된 인터페이스와만 동작하도록 코드가 만들어지기 때문에, 사용자가 정의한 어떤 ConcreteProduct
+- 응용프로그램은 product 클래스에 정의된 인터페이스와만 동작하도록 코드가 만들어지기 때문에, 사용자가 정의한 어떤 ConcreteProduct
 클래스가 와도 동작할 수 있다.
 - SRP
 - OCP

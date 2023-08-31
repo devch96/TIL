@@ -1,4 +1,4 @@
-package Product;
+package product;
 
 public interface Pizza {
     void prepare();
