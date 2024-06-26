@@ -429,3 +429,223 @@ public class TxProxyFactoryBean implements FactoryBean<Object> {
   - 생성된 프록시는 스프링의 빈으로 등록돼야 함
 - TxProxyFactoryBean과 달리 ProxyFactoryBean은 순수하게 프록시를 생성하는 작업만을 담당하고 프록시를 통해 제공해줄 부가기능은 별도의 빈에 둘 수 있음
 - ProxyFactoryBean이 생성하는 프록시에서 사용할 부가기능은 MethodInterceptor 인터페이스를 구현해서 만듬
+- InvocationHandler는 invoke() 메서드에서 타깃 오브젝트에 대한 정보를 제공하지 않기 때문에 타깃은 InvocationHandler를 구현한 클래스가 직접 알고 있어야 하지만
+MethodInterceptor의 invoke() 메서드는 ProxyFactoryBean으로부터 타깃 오브젝트에 대한 정보까지 함께 제공받기에 독리벚ㄱ으로 만들어질 수 있다.
+  - 따라서 타깃이 다른 여러 프록시에서 함께 사용할 수 있고, 싱글톤 빈으로 등록이 가능하다
+
+```java
+public void proxyFactoryBean() {
+    ProxyFactoryBean pfBean = new ProxyFactoryBean();
+    pfBean.setTarget(new HelloTarget());
+    pfBean.addAdvice(new UppercaseAdvice()); // 부가기능을 담은 어드바이스. 여러개 가능
+    
+    Hello proxiedHello = (Hello) pfBean.getObject();
+    assertThat(proxiedHello.sayHello("Toby"), is("HELLO TOBY"));
+}
+
+static class UppercaseAdvice implements MethodInterceptor {
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        String ret = (String) invocation.proceed();
+        return ret.toUpperCase();
+    }
+}
+```
+
+#### 어드바이스: 타깃이 필요 없는 순수한 부가기능
+
+- MethodInterceptor를 구현한 UppercaseAdvice에는 타깃 오브젝트가 등장하지 않는다
+- MethodInterceptor로는 메서드 정보와 함께 타깃 오브젝트가 담긴 MethodInvocation 오브젝트가 전달된다
+- ProxyFactoryBean 하나만으로 여러 개의 부가기능을 제공해주는 프록시를 만들 수 있음
+  - 새로운 부가기능을 추가해야 할 때마다 프록시와 프록시 팩토리 빈을 추가하지 않아도 됨
+
+### 포인트컷: 부가기능 적용 대상 메서드 선정 방법
+
+- InvocationHandler를 직접 구현했을 때 부가기능 적용 외에 부가기능을 적용할 대상 메서드를 선정하는 것이 있었다.
+  - pattern 이라는 메서드 이름 비교용 스트링 값
+- MethodInterceptor 오브젝트는 여러 프록시가 공유해서 사용하기에 타깃 정보를 갖고 있지 않다
+  - 따라서 싱글톤 빈으로 등록이 가능하다
+  - 트랜잭션 적용 대상 메서드 이름 패턴을 넣어주는건 안됨
+- 스프링은 부가기능을 제공하는 오브젝트를 어드바이스라고 부르고, 메서드 선정 알고리즘을 담은 오브젝트를 포인트컷이라고 부른다
+  - 어드바이스와 포인트컷 모두 프록시에 DI로 주입돼 사용됨
+  - 두 가지 모두 여러 프록시에서 공유가 가능하도록 만들어지기 때문에 싱글톤 빈으로 등록이 가능함
+- 프록시는 클라이언트로부터 요청을 받으면 먼저 포인트컷에게 부가기능을 부여할 메서드인지 확인해달라고 요청함
+  - 포인트컷은 Pointcut 인터페이스를 구현해 만듬
+- 프록시는 포인트컷으로부터 부가기능을 적용할 대상 메서드인지 확인받으면, MethodInterceptor 타입의 어드바이스를 호출함
+
+```java
+public void pointcutAdvisor() {
+    ProxyFactoryBean pfBean = new ProxyFactoryBean();
+    pfBean.setTarget(new HelloTarget());
+    
+    NameMatchMethodPointcut pointcut = new NameMatchMethodPointcut();
+    pointcut.setMappedName("sayH*");
+    pfBean.addAdvisor(new DefaultPointcutAdvisor(pointcut, new UppercaseAdvice()));
+    
+    Hello proxiedHello = (Hello) pfBean.getObject();
+    
+    assertThat
+            ...
+}
+```
+
+- 어드바이저 = 포인트컷(메서드 선정 알고리즘) + 어드바이스(부가기능)
+
+### ProxyFactoryBean 적용
+
+#### TransactionAdvice
+
+- 부가기능을 담당하는 어드바이스는 Advice 인터페이스를 구현해서 만듬
+
+```java
+public class TransactionAdvice implements MethodInterceptor { 
+    PlatformTransactionManager transactionManager;
+    
+    public void setTransactionManager(PlatformtransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+    
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        TransactionStatus status = this.transactionManager.getTransaction(new DefaultTransactionDefinition());
+        try{
+            Object ret = invocation.proceed();
+            this.transactionManager.commit(status);
+            return ret;
+        } catch(RuntimeException e) {
+            this.transactionManager.rollback(status);
+            throw e;
+        }
+    }
+}
+```
+
+#### 어드바이스와 포인트컷의 재사용
+
+- ProxyFactoryBean은 스프링의 DI와 템플릿/콜백 패턴, 서비스 추상화 등의 기법이 모두 적용된 것
+  - 독립적이며, 여러 프록시가 공유할 수 있는 어드바이스와 포인트컷으로 확장 기능을 분리할 수 있음
+- 메서드의 선정을 위한 포인트컷이 필요하면 이름 패턴만 지정해서 ProxyFactoryBean에 등록해주면 됨
+  - 트랜잭션을 적용할 메서드의 일므은 일관된 명명규칙을 정해두면 하나의 포인트컷으로 충분할 수 있음
+
+---------------
+
+## 스프링 AOP
+
+### 자동 프록시 생성
+
+- 프록시 팩토리 빈 방식의 접근 방법의 한계라고 생각했던 두 가지 문제가 남아있음
+  - 부가기능이 타깃 오브젝트마다 새로 만들어지는 문제
+    - 스프링 ProxyFactoryBean의 어드바이스를 통해 해결
+  - 부가기능의 적용이 필요한 타깃 오브젝트마다 거의 비슷한 내용의 ProxyFactoryBean 빈 설정정보를 추가해주는 부분
+
+#### 중복 문제의 접근 방법
+
+- JDK의 다이내믹 프록시는 특정 인터페이스를 구현한 오브젝트에 대해서 프록시 역할을 해주는 클래스를 런타임 시 내부적으로 만듬
+  - 클래스 소스가 따로 남지 않을 뿐이지 타깃 인터페이스의 모든 메서드를 구현하는 클래스가 만들어짐
+  - 개발자가 일일이 인터페이스 메서드를 구현하는 프록시 클래스를 만들어서 위임과 부가기능의 코드를 중복해서 넣어주지 않아도 되게 해줌
+
+#### 빈 후처리기를 이용한 자동 프록시 생성기
+
+- 빈 후처리기는 이름 그대로 스프링 빈 오브젝트로 만들어지고 난 후에 빈 오브젝트를 다시 가공할 수 있게 해줌
+- 스프링은 빈 후처리기가 빈으로 등록되어 있으면 빈 오브젝트가 생성될 때마다 빈 후처리기에 보내서 후처리 작업을 요청함
+  - 빈 후처리기는 빈 오브젝트의 프로퍼티를 강제로 수정할 수도 있고, 별도의 초기화 작업을 수행할 수도 있음
+  - 만들어진 빈 오브젝트 자체를 바꿔치기 할 수도 있음
+- 이를 잘 이용하면 스프링이 생성하는 빈 오브젝트의 일부를 프록시로 포장하고 프록시를 빈으로 대신 등록할 수 있음
+- DefaultAdvisorAutoProxyCreator는 빈으로 등록된 모든 어드바이저 내의 포인트컷을 이용해 전달받은 빈이 프록시 적용 대상인지 확인함
+  - 프록시 적용 대상이면 내장된 프록시 생성기에게 현재 빈에 대한 프록시를 만들게 하고 만들어진 프록시에 어드바이저를 연결함
+- 빈 후처리기는 프록시가 생성되면 원래 컨테이너가 전달해준 빈 오브젝트 대신 프록시 오브젝트를 컨테이너에게 돌려줌
+
+#### 확장된 포인트컷
+
+- 포인트컷은 클래스 필터와 메서드 매처 두 가지를 돌려주는 메서드를 갖고 있다
+- 포인트컷 선정 기능을 모두 적용한다면 먼저 프록시를 적용할 클래스인지 판단하고 나서 적용 대상 클래스인 경우에는 어드바이스를 적용할 메서드인지 확인하는 식으로 동작
+- 클래스 자체가 프록시 적용 대상이 아니라면 어드바이스를 통한 부가기능 부여는 물 건너감
+
+### DefaultAdvisorAutoProxyCreator의 적용
+
+#### 클래스 필터를 적용한 포인트컷 작성
+
+```java
+public class NameMatchClassMethodPointcut extends NameMatchMethodPointcut {
+    public void setMappedClassName(String mappedClassName) {
+        this.setClassFilter(new SimpleClassFilter(mappedClassName));
+    }
+    
+    static class SimpleClassFilter implements ClassFilter {
+        String mappedName;
+        
+        private SimpleClassFilter(String mappedName) {
+            this.mappedName = mappedName;
+        }
+        
+        public boolean matches(Class<?> clazz) {
+            return PatternMatchUtils.simpleMatch(mappedName, clazz.getSimpleName());
+        }
+    }
+}
+```
+
+### 포인트컷 표현식을 이용한 포인트컷
+
+- 포인트컷은 메서드의 이름과 클래스의 이름 패턴을 각각 클래스 필터와 메서드 매처 오브젝트로 비교해서 선정하는 방식
+  - 복잡하고 세밀한 기준을 이용해 클래스나 메서드를 선정하면?
+  - 리플렉션 API를 통해서 사용
+  - 하지만 작성하기 번거로움
+- 스프링은 정규식이나 JSP의 EL과 비슷한 일종의 표현식 언어를 사용해 포인트컷을 작성할 수 있게 제공함
+
+#### 포인트컷 표현식
+
+- AspectJExpressionPointcut 클래스를 사용하면 됨
+- 포인트컷 표현식은 자바의 RegEx 클래스가 지우너하는 정규식처럼 간단한 문자열로 복잡한 선정조건을 쉽게 만들어낼 수 있는 강력한 표현식을 지원함
+- AspectJ 포인트컷 표현식이라고 함
+
+#### 포인트컷 표현식 문법
+
+- AspectJ 포인트컷 표현식은 포인트컷 지시자를 이용해 작성함
+  - 대표적으로 사용되는 것은 execution()
+- execution([접근제한자 패턴] 타입패턴 [타입패턴.] 이름패턴 (타입패턴 | *..*, ...))
+- 리플렉션으로 Target 클래스의 minus()라는 메서드의 풀 시그니처를 가져와 비교해보면 이해하기 쉬움
+
+```java
+System.out.println(Target.class.getMethod("minus", int.class, int.class));
+
+public int springbook.learningtest.spring.pointcut.Target.minus(int,int) throws java.lang.RuntimeException
+```
+
+- public
+  - 접근제한다
+  - public, protected, private
+  - 포인트컷 표현식에서는 생략 가능
+  - 생략하면 조건을 부여하지 않는 것
+- int
+  - 리턴 값의 타입을 나타내는 패턴
+  - 포인트컷의 표현식에서 리턴 값의 타입 패턴은 필수항목
+  - *를 써서 모든 타입을 다 선택하겠다고 해도 됨
+  - 생략 불가
+- spring~~~.Target
+  - 패키지와 타입 이름을 포함한 클래스의 타입 패턴
+  - 생략 가능
+  - 생략하면 모든 타입 허용
+  - 패키지 이름과 클래스 또는 인터페이스 이름에 *를 사용
+  - .. 를 사용하면 한 번에 여러 개의 패키지를 선택할 수 있음
+- minus
+  - 메서드 이름 패턴
+  - 필수항목
+  - 모든 메서드라면 *
+- (int, int)
+  - 메서드 파라미터의 타입 패턴
+
+### AOP란 무엇인가?
+
+- 비즈니스 로직을 담은 UserService에 트랜잭션을 적용해온 과정
+
+#### 트랜잭션 서비스 추상화
+
+- 트랜잭션 기술에 종속되는 코드
+  - JDBC의 로컬 트랜잭션 방식을 적용한 코드를 JTA를 이용한 트랜잭션 방식으로 바꾸면 모든 트랜잭션 적용 코드를 수정해야 함
+- 서비스 추상화 기법 적용
+- 비즈니스 로직 코드는 트랜잭션을 어떻게 처리해야 한다는 구체적인 방법을 몰라도 됨
+- DI를 활용한 전형적인 접근 방법
+
+#### 프록시와 데코레이터 패턴
+
+- 추상화를 통해 코드를 제거했지만 비즈니스 로직 코드에는 트랜잭션을 적용하고 있다는 사실이 드러남
+- 
