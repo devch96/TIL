@@ -799,3 +799,85 @@ public int springbook.learningtest.spring.pointcut.Target.minus(int,int) throws 
 
 - 기존에 만들었던 TransactionAdvice를 다시 설계할 필요 없음
   - TransactionAdvice와 동일하지만 트랜잭션 정의를 메서드 이름 패턴을 이용해서 다르게 지정할 수 있는 방법을 추가로 제공해 줌
+- TransactionInterceptor는 PlatformTransactionManager와 Properties 타입의 두 가지 프로퍼티를 갖고 있음
+  - Properties 타입의 프로퍼티 이름은 transactionAttributes로 트랜잭션 속성을 정의한 프로퍼티
+  - TransactionDefinition의 네 가지 기본 항목에 rollbackOn() 메서드를 하나 더 갖고 있는 TransactionAttritbute 인터페이스로 정의됨
+  - rollbackOn() 메서드는 어떤 예외가 발생하면 롤백을 할 것인가를 결정하는 메서드
+
+### 포인트컷과 트랜잭션 속성의 적용 전략
+
+- 트랜잭션 부가기능을 적용할 후보 메서드를 선정하는 작업은 포인트컷에 의해 진행됨
+- 어드바이스의 트랜잭션 전파 속성에 따라서 메서드별로 트랜잭션의 적용 방식이 결정됨
+
+-----------
+
+## 애노테이션 트랜잭션 속성과 포인트컷
+
+- 클래스나 메서드에 따라 제각각 속성이 다른, 세밀하게 튜닝된 트랜잭션 속성을 적용해야 하는 경우도 있음
+  - 메서드 이름 패턴을 이용해서 일괄적으로 트랜잭션 속성을 부여하는 방식은 적합치 않음
+  - 기본 속성과 다른 경우가 있을 때마다 일일이 포인트컷과 어드바이스를 새로 추가해줘야 하기 때문
+
+### 트랜잭션 애노테이션
+
+- 스프링 3.0은 자바 5에서 등장한 애노테이션을 많이 사용함
+
+#### @Transactional
+
+```java
+@Target({ElementType.METHOD, ElementType.TYPE}) // 애노테이션을 사용할 대상 지정. 메서드와 타입(클래스, 인터페이스)
+@Retention(RetentionPolicy.RUNTIME) // 애노테이션 정보가 언제까지 유지되는지 지정, 런타임 때도 애노테이션 정보를 리플렉션을 통해 얻을 수 있음
+@Inherited // 상속을 통해서도 애노테이션 정보를 얻을 수 있음
+@Documented
+public @interface Transactional {
+    String value() default "";
+    Propagation propagation() default Propagation.REQUIRED;
+    Isolation isolation() default Isolation.DEFAULT;
+    int timeout() default TransactionDefinition.TIMEOUT_DEFAULT;
+    boolean readOnly() default fasle;
+    Class<? extends Throwable>[] rollbackFor() default {};
+    String[] rollbackForClassName() default {};
+    Class<? extends Throwable>[] noRollbackFor() default {};
+    String[] noRollbackForClassName() default {};
+}
+```
+
+- @Transactional 애노테이션을 트랜잭션 속성정보로 사용하도록 지정하면 스프링은 모든 오브젝트를 자동으로 타깃 오브젝트로 인식한다
+  - 이때 사용되는 포인트컷은 TransactionAttributeSourcePointcut
+- @Transactional은 기본적으로 트랜잭션 속성을 정의하는 것이지만 동시에 포인트컷의 자동등록에도 사용된다
+
+#### 대체 정책
+
+- 스프링은 @Transactional을 적용할 때 4단계의 대체 정책을 이용하게 해줌
+  - 메서드의 속성을 확인할 때 타깃 메서드, 타깃 클래스, 선언 메서드, 선언 타입(클래스, 인터페이스)의 순서에 따라서 @Transactional이 적용됐는지
+  차례로 확인하고, 가장 먼저 발견되는 속성정보를 사용하게 하는 방법
+
+```java
+// 1
+public interface Service {
+    // 2
+    void method1();
+    // 3
+    void method2();
+}
+
+// 4
+@Service
+public class ServiceImpl implements Service {
+    @Override // 5
+    public void method1(){}
+    
+    @Override // 6
+    public void method2(){}
+}
+```
+
+- 스프링은 트랜잭션 기능이 부여될 위치인 타깃 오브젝트의 메서드부터 시작해서 @Transactional 애노테이션이 존재하는지 확인한다.
+  - 5,6 이 @Transactional이 위치할 수 있는 첫 번째 후보
+  - 여기서 발견되면 바로 애노테이션의 속성을 가져다 해당 메서드의 트랜잭션 속성으로 사용
+- 메서드에서 발견하지 못하면 타깃 클래스인 4 에서 존재하는지 확인
+- 타깃 클래스에서도 발견하지 못하면 스프링은 메서드가 선언된 인터페이스로 넘어감
+  - 인터페이스에서도 메서드 먼저 확인하고 타깃 타입 확인
+- 대체 정책을 잘 활용해서 애노테이션 자체는 최소한으로 사용하면서도 세미랗ㄴ 제어가 가능함
+- @Transactional은 먼저 타입 레벨에 정의되고 공통 속성을 따르지 않는 메서드에 대해서만 메서드 레벨에 다시 @Transactional을 부여해주는 식으로 사용해야 한다
+
+----------
