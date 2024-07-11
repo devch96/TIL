@@ -399,4 +399,275 @@ public class AnnotatedHello{
 }
 ```
 
-- 
+- 애노테이션을 부여하고 자동스캔으로 빈을 등록하면 복잡한 XML 문서 생성과 관리에 따른 수고를 덜어주고 개발 속도를 향상시킬 수 있음
+  - 하지만 애플리케이션에 등록될 빈이 어떤 것들이 있는지 한눈에 파악하기 어려움
+  - 빈의 개수가 많아지면 XML도 어렵긴 마찬가지지만 누군가 책임지고 애플리케이션을 구성하는 빈과 의존관계, 설정 등을 통제하고 관리하는 데는 XML이 유리
+- 빈 스캔에 의해 자동등록되는 빈은 XML처럼 상세한 메타정보 항목을 지정할 수 없고, 클래스당 한 개 이상의 빈을 등록할 수 없다는 제한이 있음
+  - 동일한 클래스의 여러 인스턴스를 빈으로 등록하려면 수동 설정이 필요함
+  - 빈 이름, 스코프, 지연된 생성 밥법과 같은 빈 메타정보 항목은 스테레오타입 애노테이션의 엘리먼트나 기타 애노테이션을 이용해 변경 가능
+
+#### 자바 코드에 의한 빈 등록: @Configuration 클래스의 @Bean 메서드
+
+- 빈 설정 메타정보를 담고 있는 자바 코드는 @Configuration 애노테이션이 달린 클래스를 이용해 작성한다
+- 클래스에 @Bean이 붙은 메서드를 정의할 수 있는데, 이 @Bean 메서드를 통해 빈을 정의할 수 있다
+
+```java
+@Configuration
+public class AnnotatedHelloConfig {
+    @Bean
+    public AnnotatedHello annotatedHello() { // @Bean이 붙은 메서드 하나가 하나의 빈을 정의. 빈 이름은 메서드 이름
+        return new AnnotatedHello(); // 컨테이너는 이 리턴 오브젝트를 빈으로 활용
+    }
+}
+```
+
+- 설정을 담은 자바 코드에 해당하는 AnnotatedHelloConfig 자체도 하나의 빈으로 등록된다
+  - @Component를 이용한 자동인식 방식과 같음
+- AnnotatedHelloConfig가 빈이면 해당 빈을 가져와서 annoatedHello 메서드를 실행하면 AnnotatedHello 오브젝트가 두개 가 될까?
+  - 아니다.
+  - annotatedHello도 빈으로 등록되는데 스코프가 싱글톤이기 때문에 DI를 통해 다른 여러 빈에 참조되든 getBean() 메서드에 의해 가져오든
+  annotatedHello() 메서드를 직접 실행해서 빈 오브젝트를 가져오든 싱글톤이어야 한다
+- 싱글톤 빈의 경우 일반적인 자바 코드와는 조금 다른 방식으로 동작
+  - @Configuration과 @Bean을 사용하는 클래스는 순수한 오브젝트 팩토리 클래스라기 보다는 자바 코드로 표현되는 메타정보라고 이해
+- 자바 코드에 의한 설정이 XML과 같은 외부 설정파일을 이용하는 것보다 유용한 점
+  - 컴파일러나 IDE를 통한 타입 검증이 가능
+  - 자동완성과 같은 IDE 지원 기능을 최대한 이용할 수 있음
+  - 이해하기 쉬움
+  - 복잡한 빈 설정이나 초기화 작업을 손쉽게 적용할 수 있음
+
+#### 자바 코드에 의한 빈 등록: 일반 빈 클래스의 @Bean 메서드
+
+- 기본적으로 @Configuration 애노테이션이 붙은 설정 전용 클래스를 이용하나, 일반 POJO 클래스에도 @Bean을 사용할 수 있음
+- @Configuration이 붙지 않은 @Bean 메서드는 @Configuration 클래스의 @Bean과 미묘한 차이가 있음
+
+```java
+public class HelloService {
+    @Bean
+    public Hello hello() {
+        Hello hello = new Hello();
+        hello.setPrinter(printer());
+        return hello;
+    }
+  
+    @Bean
+    public Hello hello2() {
+      Hello hello = new Hello();
+      hello.setPrinter(printer());
+      return hello;
+    }
+    
+    @Bean
+    public Printer printer() {
+        return new StringPrinter();
+    }
+}
+```
+
+- @Configuration이 붙지 않은 클래스에 @Bean을 사용했을 때는 hello.setPrinter(printer())처럼 다른 @Bean 메서드를 호출해서 DI하는 코드에 문제가 발생함
+- @Bean이 붙은 메서드는 기본적으로 싱글톤이기 때문에 여러번 호출돼도 하나의 오브젝트만 리턴하는 것을 보장하지만 @Configuration 클래스 안에서 사용된 @Bean만 해당됨
+
+```java
+public class HelloService {
+    private Printer printer;
+    
+    public void setPrinter(Printer printer) {
+        this.printer = printer;
+    }
+    
+    @Bean
+    private Hello hello() {
+      Hello hello = new Hello();
+      hello.setPrinter(this.printer);
+      return hello;
+    }
+
+    @Bean
+    private Hello hello2() {
+      Hello hello = new Hello();
+      hello.setPrinter(this.printer);
+      return hello;
+    }
+    
+    @Bean
+    private Printer printer() {
+        return new StringPrinter();
+    }
+}
+```
+
+- 자신의 내부에서 정의되는 빈을 DI받아 이를 각 메서드가 사용하게 하면 싱글턴처럼 된다.
+- 일반 클래스에서 @Bean을 사용할 경우 이런 위험성이 있기 떄문에 함부로 남용해서는 안됨
+  - 클래스 밖에서 @Bean 메서드를 호출할 수 없도록 private으로 선언해두고, 클래스 내부에서도 DI를 통해 참조해야지 메서드를 직접 호출하지 않도록
+  주의를 기울여야 함
+- @Configuration 클래스가 아닌 일반 빈 클래스에 @Bean 메서드를 이용한 빈 메타정보 선언 기능을 사용해야 할 때는 언제일까?
+  - @Bean 메서드를 통해 정의되는 빈이 클래스로 만들어지는 빈과 매우 밀접한 관계가 있는 경우
+    - 종속적인 빈
+  - @Bean 메서드는 클래스 내부에 정의되어 있으므로 클래스의 모든 저오에 접근 가능함
+    - 설정정보 등을 공유할 수 있으며 외부로 빈의 존재를 감출 수 있음
+- 하지만 설정정보가 일반 애플리케이션 코드와 함께 존재하기 때문에 유연성이 떨어짐
+
+#### 빈 등록 메타정보 구성 전략
+
+- 빈 등록 방법은 한 가지만 선택해야 하는 것이 아닌 조합해 사용할 수 있음
+  - 애플리케이션의 특성과 개발팀의 문화, 기업의 정책에 맞는 적절한 조합을 찾아내고 일관성 있게 사용하는 것이 중요
+- XML 단독 사용
+  - 모든 빈을 명시적으로 XML에 등록하는 방법
+  - 컨텍스트에서 생성되는 모든 빈을 XML에서 확인할 수 있다는 장점
+  - 빈의 개수가 많아지면 XML파일을 관리하기 번거롭다는 단점
+  - 모든 설정정보를 자바 코드에서 분리하고 순수한 POJO 코드를 유지하고 싶다면 XML
+  - BeanDefinition을 코드에서 직접 만드는 방법을 제외하면 스프링이 제공하는 모든 종류의 빈 설정 메타정보 항목을 저장할 수 있는
+  유일한 방법
+- XML과 빈 스캐닝의 혼용
+  - 애플리케이션 3계층의 핵심 로직을 담고 있는 빈 클래스는 그다지 복잡한 빈 메타정보를 필요로 하지 않음
+    - 대부분 싱글톤, 클래스당 하나만 만들어지므로 빈 스캐닝에 의한 자동인식 대상으로 적절
+  - 기술 서비스, 기반 서비스, 컨테이너 설정 등의 빈은 XML을 사용하면 됨
+    - 스키마에 정의된 전용 태그를 사용해서 AOP나 트랜잭션 속성, 내장형 DB, OXM 마샬러를 위한 빈을 손쉽게 등록할 수 있음
+    - 각 방법의 장점을 잘 살려서 적용하면 매우 효과적
+      - 기술 서비스나 컨테이너 설정용 빈은 초기 XML에 등록
+      - 개발이 진행되면서 생기는 빈들은 스테레오타입 애노테이션 부여 자동스캔
+      - 원하는 빈만 선별해서 등록 가능
+    - 스캔 대상이 되는 클래스를 위치시킬 패키지를 미리 결정해야함을 주의
+      - 웹 기반의 스프링 애플리케이션에는 보통 두 개의 애플리케이션 컨텍스트가 등록돼서 사용됨
+      - 빈 스캐닝은 애플리케이션 컨텍스트별로 진행되는 작업
+      - XML이라면 알아서 각각 컨텍스트에 속한 빈을 등록하면 되지만 빈 스캐닝은 한 번에 최상위 패키지를 지정해서 하는 것이니
+      자칫 하면 양쪽 컨텍스트의 빈 스캐너가 같은 클래스를 중복해서 빈으로 등록해버릴 수 있음
+- XML 없이 빈 스캐닝 단독 사용
+  - 애플리케이션 컴포넌트는 물론이고, 각종 기술 서비스와 컨테이너 설정용 빈도 모두 스캔으로 자동등록시키는 것
+  - 자바 코드에 의한 빈 설정 방식 사용
+  - 모든 빈의 정보가 자바 코드에 담겨 있으므로 빈의 설정정보를 타입에 안전한 방식으로 작성할 수 있다는 것
+  - XML을 사용하지 않기 떄문에 스프링이 미리 제공해주는 aop, tx 등을 비롯한 10여 개의 스키마와 그 안에 정의된 전용 태그를 쓸 수 없다는 것이 큰 단점
+
+### 빈 의존관계 설정 방법
+
+- DI 할 대상을 선정하는 방법으로 빈 사이의 의존관계 메타정보를 작성하는 방법을 분류하면 명시적으로 구체적인 빈을 지정하는 방법과
+일정한 규칙에 따라 자동으로 선정하는 방법으로 나눔
+  - 전자는 DI 할 빈의 아이디를 직접 지정하는 것
+  - 후자는 주로 타입 비교를 통해서 호환되는 타입의 빈을 DI 후보로 삼는 방법
+    - 자동와이어링(autowiring)이라 부름
+
+#### XML: property, constructor-arg
+
+- 빈 태그를 이용해 빈을 등록했다면 프로퍼티와 생성자 두 가지 방식으로 DI를 지정할 수 있음
+  - 프로퍼티는 자바빈 규약을 따르는 수정자 메서드 사용
+  - 생성자는 빈 클래스의 생성자를 이용
+  - 파라미터로 의존 오브젝트 또는 값을 주입
+- property: 수정자 주입
+  - ref 애트리뷰트를 사용해 빈 이름을 이용해 주입할 빈을 찾음
+  - value 애트리뷰트는 단순 값 또는 빈이 아닌 오브젝트를 주입할 때 사용
+```xml
+<bean ...>
+    <property name="printer" ref="defaultPrinter" />
+</bean>
+<bean id="defaultPrinter" class="...">
+
+<property name="name" value="Spring"/>
+<property name="age" value"30"/>
+<proeprty name="myClass" value="java.lang.String"/>
+```
+
+- XML의 property에는 해당 프로퍼티의 타입정보가 나타나지 않음
+  - 주입 대상 프로퍼티와 주입될 빈 또는 값의 타입이 호환되는지 주의를 기울여서 작성
+  - 타입안전성이 떨어짐
+- constructor-arg: 생성자 주입
+  - 생성자를 통한 빈 또는 값의 주입에 사용됨
+  - 수정자 메서드와 다르게 생성자 주입은 생성자의 파라미터를 이용하기 때문에 한 번에 여러 개의 오브젝트를 주입할 수 있음
+  - 파라미터의 순서나 타입을 명시하는 방법이 필요함
+  - ref, value 애트리뷰트는 property와 동일한 의미
+```xml
+<bean id="hello" class="springbook.learningtest.spring.ioc.bean.Hello">
+  <constructor-arg index="0" value="Spring"/>
+  <constructor-arg index="1" ref="printer" />
+</bean>
+```
+- 파라미터에 중복되는 타입이 없으면 타입으로 구분해줄수도 있음
+
+#### XML: 자동와이어링
+
+- 자동와이어링 방식은 XML 문서의 양을 대폭 줄여줄 수 있는 획기적인 방법이지만 위험이 따르기 때문에 사용에 주의를 기울여야 함
+- byName: 빈 이름 자동와이어링
+
+```xml
+<bean id="hello" class="...Hello" autowire="byName">
+  <property name="name" value="Spring"/>
+</bean>
+```
+  
+  - printer 프로퍼티는 생략했지만 autowire="byName"에 의해 스프링은 Hello 클래스의 프로퍼티의 이름과 동일한 빈을 찾아서 자동으로 프로퍼티로 등록해줌
+    - 프로퍼티와 이름이 같은 빈이 없는 경우는 무시함
+    - 아예 루트 태그인 beans의 디폴트 자동와이어링 옵션을 변경해도 됨
+    - 자동와이어링이 어려운 프로퍼티 값이나 특별한 이름을 가진 프로퍼티의 경우에는 명시적으로 property를 선언해주면 됨
+
+- byType: 타입에 의한 자동와이어링
+  - 타입에 의한 자동와이어링은 타입이 같은 빈이 두 개 이상 존재하는 경우에는 적용되지 못함
+  - 타입을 비교하면 스트링으로 된 이름을 비교할 때보다 느림
+- XML 안에서 자동와이어링을 사용하는 방식의 단점
+  - XML만 봐서는 빈 사이의 의존관계를 알기 힘듬
+  - 대응되는 빈이 존재해야만 DI가 이뤄짐
+  - 오타로 빈 이름을 잘못 적을 수 있음
+  - 빈에 대해 한 가지 자동와이어링 방식밖에 지정할 수 없다는 것도 한계
+
+#### 애노테이션: @Resource
+
+- property 선언과 비슷하게 주입할 빈을 아이디로 지정하는 방법
+- 수정자뿐만 아니라 필드에도 붙일 수 있음
+
+```java
+public class Hello {
+    private Printer printer;
+    
+    @Resource(name="printer")
+    public void setPrinter(Printer printer) {
+        this.printer = printer;
+    }
+}
+```
+- @Resource와 같은 애노테이션으로 된 의존관계 정보를 이용해 DI가 이뤄지게 하려면 세 가지 방법중 하나를 선택해야 함
+  - XML의 <context:annotation-config />
+  - XML의 <context:component-scan />
+  - AnnotationConfigApplicationContext 또는 AnnotationConfigWebApplicationContext
+
+```java
+@Component
+public class Hello {
+    @Resource(name="printer")
+    private Printer printer;
+}
+```
+
+- @Resource가 필드에 붙어 있을 때는 그에 대응되는 수정자가 없어도 상관없음
+- 이런 방법을 필드 주입(field Injection)이라고 함
+
+#### 애노테이션: @Autowired/@Inject
+
+- @Autowired는 스프링 2.5부터 적용된 스프링 전용 애노테이션
+- @Inject는 JavaEE 6의 표준 스펙으로 여타 프레임워크에서도 동일한 의미로 사용되는 DI를 위한 애노테이션
+- 스프링으로 개발한 POJO를 앞으로 다른 환경에서도 사용할 가능성이 있다면 @Inject
+- @Autowired는 XML의 타입에 의한 자동와이어링 방식을 생성자, 필드, 수정자 메서드, 일반 메서드의 네 가지로 확장한 것
+- 수정자 메서드와 필드
+  - @Resource와 사용 방법이 비슷함
+  - 필드나 수정자를 만들어주면 스프링이 자동으로 DI 해주도록 만드는 것
+  - 필드나 프로퍼티 타입을 이용해 후보 빈을 찾음
+- 생성자
+  - 생성자의 모든 파라미터에 타입에 의한 자동와이어링이 적용됨
+  - 단 하나의 생성자에만 사용할 수 있다는 제한이 있음
+  - 생성자가 하나면 생략 가능
+- 일반 메서드
+  - 생성자 주입을 수정자 주입보다 선호하는 개발자들이 있음
+  - 하지만 무엇이 항상 옳지는 않음
+  - 모든 프로퍼티를 다 DI 하지 않고 일부는 디폴트 값을 주고 선택적으로 DI할 수 있게 만들어야 할 때도 많음
+- 컬렉션과 배역
+  - 같은 타입의 빈이 하나 이상 존재할 때 그 빈들을 모두 DI 받도록 할 수있음
+  - 컬렉션이나 배열로 선언하면 됨
+- @Qualifier
+  - 타입 외의 정보를 추가해서 자동와이어링을 세밀하게 제어할 수 있는 보조적 방법
+
+### 프로퍼티 값 설정 방법
+
+- DI를 통해 주입되는 것은 두 가지
+  - 다른 빈 오브젝트 레퍼런스
+  - 단순 값
+- 싱글톤은 동시성 문제 때문에 필드 값을 함부로 수정하지 않음
+  - 상태가 없는 방식으로 만들기 때문에 필드에 있는 값은 읽기전용인 경우가 대부분
+  - 상태를 가진 빈으로 만든다면 주입되는 값은 일종의 초기값
+
+#### 메타정보 종류에 따른 값 설정 방법
