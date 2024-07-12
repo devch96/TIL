@@ -671,3 +671,165 @@ public class Hello {
   - 상태를 가진 빈으로 만든다면 주입되는 값은 일종의 초기값
 
 #### 메타정보 종류에 따른 값 설정 방법
+
+- XML: property와 전용 태그
+  - ref 애트리뷰트를 이용해 다른 빈의 아이디를 지정함
+  - value 애트리뷰트를 사용하면 런타임 시에 주입할 값으로 인식
+  - 프로퍼티 타입이 String이라면 가장 간단
+    - value 애트리뷰트 값도 스트링이기 때문
+  - int, float, double, boolean 같은 기본 타입이거나 Class나 Resource같은 오브젝트는 변환이 필요함
+    - 스프링 컨테이너는 XML의 문자열로 된 값을 프로퍼티 타입으로 변환해주는 변환 서비스를 내장
+- 애노테이션: @Value
+  - 빈 의존관계는 아니지만 어떤 값을 외부에서 주입해야 하는 용도는 두 가지
+    - 환경에 따라 매번 달라질 수 있는 값
+      - DataSource 타입의 빈에 제공하는 DriverClass, URL, Username, Password
+      - 파일 경로처럼 환경에 의존적인 정보
+    - 초기값을 미리 갖고 있다는 점
+      - 클래스의 필드에 초기값을 설정해두고 특별한 경우(테스트, 이벤트) 초기값 대신 다른 값을 지정하고 싶을 때
+- 자바 코드: @Value
+  - @Configuration과 @Bean을 사용하는 경우에도 프로퍼티 값을 외부로 독립시킬 수 있음
+  - 클래스 자체가 메타정보이기 때문에 설정을 변경해야 할 때마다 코드를 수정하고 재컴파일하는 게 문제가 되지 않음
+
+#### PropertyEditor와 ConversionService
+
+- XML의 value 애트리뷰트나 @Value의 엘리먼트는 모두 텍스트 문자로 작성됨
+  - 스트링이면 아무 문제 없지만 그 외의 타입인 경우엔 타입을 변경하는 과정 필요
+- 스프링은 두 가지 종류의 타입 변환 서비스 제공
+  - 디폴트로 사용되는 타입 변환기는 PropertyEditor라는 java.beans의 인터페이스를 구현한 것
+- 스프링이 기본적으로 지원하는 변환 가능한 타입
+  - 기본 타입
+  - 배열
+  - 기타
+    - Charset
+    - Class
+    - Currency
+    - File
+    - InputStream
+    - Local
+    - Pattern
+    - Resource
+    - Timezone
+    - URI,URL
+
+#### 컬렉션
+
+- 스프링은 List, Set, Map, Properties와 같은 컬렉션 타입을 XML로 작성해서 프로퍼티에 주입하는 방법을 제공함
+  - value 애트리뷰트를 통해 스트링 값을 넣는 대신 컬렉션 선언용 태그를 사용해야 함
+  - value 애트리뷰트가 생략됨
+- List, set
+  - list, value를 이용해 선언함
+```xml
+<list>
+  <value>Spring</value>
+  <value>IoC</value>
+  <value>DI</value>
+</list>
+```
+- Map
+  - map, entry 태그를 사용함
+```xml
+<map>
+  <entry key="Kim" value="30"/>
+  <entry key="Lee" value="20"/>
+  <entry key="Ahn" value="10"/>
+</map> 
+```
+
+- Properties
+  - java.util.Properties 타입은 props와 prop을 이용함
+
+```xml
+<props>
+  <prop key="username">Spring</prop>
+  <prop key="password">Book</prop>
+</props>
+```
+
+- 컬렉션 대신에 다른 빈의 레퍼런스를 넣을 수 있음
+
+### 컨테이너가 자동등록하는 빈
+
+- 스프링 컨테이너는 초기화 과정에서 몇 가지 빈을 기본적으로 등록해줌
+  - 자주 사용하지는 않지만 간혹 필요할 때가 있으니 기억해두면 좋음
+
+#### ApplicationContext, BeanFactory
+
+- 스프링에서 컨테이너는 자신을 빈으로 등록해두고 필요하면 일반 빈에서 DI 받아서 사용할 수 있음
+- 애플리케이션 컨텍스트를 일반 빈에서 사용하고 싶다면 ApplicationContext 타입의 빈을 DI 받도록 선언하면 됨
+
+```java
+public class SystemBean {
+    @Autowired
+    ApplicationContext context;
+    
+    public void specialJobWithContext() {
+        this.context.getBean(...);
+    }
+}
+```
+
+- 애노테이션을 이용한 의존관계 설정을 사용하지 않는다면 @Autowired를 사용할 수 없음
+- 이때는 ApplicationContextAware라는 특별한 인터페이스를 구현해주면 됨
+  - ApplicationContextAware 인터페이스에는 setApplicationContext() 메서드가 있어서 스프링이 애플리케이션 컨텍스트 오브젝트를 DI 해줄 수 있음
+- 컨텍스트 내부에 만들어진 빈 팩토리 오브젝트를 직접 사용하고 싶다면 BeanFacotyr 타입으로 DI 해줄 필요가 있음
+  - BeanFactory 인터페이스의 메서드를 이용하기 보다는 애플리케이션 컨텍스트 내에서 생성한 DefaultListableBeanFactory 오브젝트로 캐스팅해서 제공하는 기능을 사용하기
+  위해
+- 애플리케이션 코드에서 애플리케이션 컨텍스트를 직접 사용할 일은 많지 않지만 스프링을 기반으로 해서 애플리케이션 프레임워크를
+개발한다면 많이 사용함
+
+#### ResourceLoader, ApplicationEventPublisher
+
+- 스프링 컨테이너는 ResourceLoader이기도 하기 때문에 서버환경에서 다양한 Resource를 로딩할 수 있는 기능을 제공함
+- 코드를 통해 서블릿 컨텍스트의 리소스를 읽어오고 싶다면 컨테이너를 ResourceLoader 타입으로 Di 받아서 활용하면 됨
+
+```java
+@Autowired
+ResourceLoader resourceLoader;
+
+public void loadDataFile() {
+    Resource resource = this.resourceLoader.getResource("WEB-INF/info.dat");
+}
+```
+
+- ApplicationContext는 ResourceLoader를 상속하고 있으므로 ApplicationContext를 DI 받아서 사용해도 되지만 단지 리소스를 읽어오려는 목적이라면
+용도에 맞게 적절한 인터페이스 타입으로 DI 받아 사용하는 것이 바람직함
+
+#### systemProperties, systemEnvironment
+
+- 스프링 컨테이너가 직접 등록하는 빈 중에서 타입이 아니라 이름을 통해 접근할 수 있는 두 가지 빈
+- systemProperties 빈은 System.getProperties() 메서드가 돌려주는 Properties 타입의 오브젝트를 읽기전용으로 접근할 수 있게
+만든 빈 오브젝트
+  - JVM이 생성해주는 시스템 프로퍼티 값을 읽을 수 있게 해줌
+  - 코드에서 시스템 프로퍼티를 사용한다면 System.getProperty("os.name")처럼 직접 코드로 만드는 편이 남
+
+--------------------
+
+## 프로토타입과 스코프
+
+- 기본적으로 스프링의 빈은 싱글톤으로 만들어짐
+  - 애플리케이션 컨텍스트마다 빈의 오브젝트는 단 한개만 만들어진다는 뜻
+  - 매번 애플리케이션 로직을 담은 오브젝트를 새로 만드는 건 비효율적이기 때문
+- 하나의 빈 오브젝트에 여러 스레드가 접근하기 때문에 상태 값을 인스턴스 변수에 저장해두고 사용하면 안됨
+  - DTO를 리턴값이나 파라미터로 쓰자
+- 빈을 싱글톤이 아닌 다른 방법으로 만들어 사용해야 할 때가 있음
+  - 빈 당 단 하나의 오브젝트만을 만드는 싱글톤 대신 하나의 빈 설정으로 여러 개의 오브젝트를 만들어서 사용하는 경우
+
+### 프로토타입 스코프
+
+- 싱글톤 스코프는 DI 설정으로 자동 주입하는 것 말고 컨테이너에 getBean() 메서드를 사용해 의존객체를 조회하더라도 매번 같은 오브젝트가 리턴됨이 보장됨
+- 프로토타입 스코프는 컨테이너에게 빈을 요청할 때마다 매번 새로운 오브젝트를 생성해줌
+
+#### 프로토타입 빈의 생명주기와 종속성
+
+- 스프링이 관리하는 오브젝트인 빈은 그 생성과 다른 빈에 대한 의존관계 주입, 초기화, DI와 DL을 통한 사용, 제거에 이르기까지 모든 오브젝트의
+생명주기를 컨테이너가 관리함
+- 프로토타입 빈은 독특하게 이 IoC 기본 원칙을 따르지 않음
+- 일단 빈을 제공하고나면 컨테이너는 더 이상 빈 오브젝트를 관리하지 않음
+  - DL,DI를 통해 컨테이너 밖으로 전달된 후에는 이 오브젝트는 스프링이 관리하는 빈이 아님
+- 프로토타입 빈 오브젝트는 다시 컨테이너를 통해 가져올 방법이 없고 빈이 제거되기 전에 빈이 사용한 리소스를 정리하기 위해 호출하는 메서드도 이용할 수 없음
+- 빈 오브젝트는 전적으로 DI 받은 오브젝트에 달려 있음
+
+#### 프로토타입 빈의 용도
+
+- 대부분의 애플리케이션 로직은 싱글톤 빈으로 충분
+- 
