@@ -832,4 +832,309 @@ public void loadDataFile() {
 #### 프로토타입 빈의 용도
 
 - 대부분의 애플리케이션 로직은 싱글톤 빈으로 충분
-- 
+- 사용자의 요청에 따라 매번 독립적인 오브젝트를 만들어야 하는데, 매번 새롭게 만들어지는 오브젝트가
+컨테이너 내의 빈을 사용해야 하는 경우
+  - DI가 필요한 오브젝트
+  - 오브젝트에 DI를 적용하려면 컨테이너가 오브젝트를 만들게 해야 함
+
+```java
+public class ServiceRequest {
+    String customerNo;
+    String productNo;
+    String description;
+}
+```
+
+- ServiceRequest의 오브젝트는 매번 신청을 받을 때마다 새롭게 만들어지고 폼의 정보를 담아서 서비스 계층으로 전달됨
+
+```java
+public void serviceRequestFormSubmit(HttpServletRequest request) {
+    ServiceRequest serviceRequest = new ServiceRequest();
+    serviceRequest.setCustomerNo(request.getParameter("custono"));
+    ...
+    this.serviceRequestService.addNewServiceRequest(serviceRequest);
+}
+```
+
+```java
+public void addNewServiceRequest(ServiceRequest serviceRequest) {
+    Customer customer = this.customerDao.findCustomerByNo(serviceRequest.getCustomerNo());
+    this.serviceRequestDao.add(serviceRequest, customer);
+    this.eamilService.sendEamil(customer.getEmail(), "abcd");
+}
+```
+- ServiceRequest를 단지 폼의 정보를 전달해주는 DTO와 같은 데이터 저장용 오브젝트로 취급하고, 그 정보를 이용해 실제 비즈니스 로직을 처리할 때 
+필요한 정보는 다시 서비스 계층의 오브젝트가 직접 찾아오게 만드는 것
+- 이 방식의 장점은 처음 설계하고 만들기 편하다는 것
+  - 웹 페이지의 등록 폼에서 어떤 식으로 사용자 정보가 입력될지를 미리 정해두고, 그 입력 방식에 따라서 컨트롤러와 서비스 오브젝트까지 만들면 됨
+- 문제는 폼의 고객정보 입력 방법이 모든 계층의 코드와 강하게 결합되어 있음
+  - 이는 전형적인 데이터 중심의 아키텍처가 만들어내는 구조
+- 비록 ServiceRequest 오브젝트에 폼 정보가 담겨 있긴 하지만 도메인 모델을 반영하고 있다고 보긴 힘듬
+- 모델 관점으로 보자면 서비스 요청 클래스인 ServiceRequest는 Cutomer 라는 고객 클래스와 연결되어 있어야지 폼에서 어떻게 입력받는지에 따라
+달라지는 customerNo나 customerId 같은 값에 의존하고 있으면 안 됨
+
+```java
+public class ServiceRequest {
+    Customer customer;
+    String productNo;
+    String description;
+    ...
+}
+```
+
+- 폼에서 문자열로 된 고객번호를 입력받을 텐데 그것을 어떻게 Customer 오브젝트로 바꿔서 ServiceRequest에 넣어 줄 수 있나?
+  - customerNo를 가지고 CustomerDao에 요청해서 Customer 오브젝트를 찾아오면 됨
+  - 이전에는 이것을 ServiceRequestService의 메서드에서 처리했음
+  - 웹 컨트롤러에서 사용해도 되지만 ServiceRequest 자신이 처리하는 것이 가장 좋음
+
+```java
+public class ServiceRequest {
+    Customer customer;
+    @Autowired
+    CustomerDao customerDao;
+    
+    public void setCustomerByCustomerNo(String customerNo) {
+        this.customer = customerDao.findCustomerByNo(customerNo);
+    }
+}
+```
+
+- 남은 문제는 컨트롤러에서 new 키워드로 직접 생성하는 ServiceRequest 오브젝트에 어떻게 DI를 적용할 것인가
+  - 프로토타입 스코프 빈이 필요할 때
+
+```java
+@Component
+@Scope("prototype")
+public class ServiceRequest {
+  ...
+}
+```
+
+- 매번 새롭게 오브젝트를 만들면서도 DI도 함께 적용하려고 할 때 사용할 수 있는 게 바로 프로토타입 빈
+  - 한번 컨테이너로부터 생성해서 가져온 이후에는 new로 직접 생성한 오브젝트처럼 평범하게 사용하면 됨
+- 프로토타입 빈을 적용한 ServiceRequest가 항상 좋은가?
+  - 꼭 그러지 않음
+- 고급 AOP 기능을 사용하면 ServiceRequest를 프로토타입 빈으로 만들어 getBean()으로 가져오지 않고, 단순히 new 키워드로 생성ㅇ해도 DI가 됨
+  - 깔끔하긴 하지만 JVM이나 클래스 로더 설정과 같은 부가적인 작업 필요
+
+#### DI와 DL
+
+- DL 방식을 쓰지 않고 프로토타입 빈을 직접 DI 해서 사용하는건 어떨까?
+
+```java
+@Autowired
+ServiceRequest serviceRequest;
+
+public void serviceRequestFormSubmit(HttpServletRequest request) {
+    this.serviceRequest.setCustomerNo(request.getParameter("custno"));
+}
+```
+
+- 위 코드를 테스트하면 정상적으로 동작하는 것처럼 보이지만 운영 시스템에 적용하면 매우 심각한 문제가 발견됨
+  - 웹 컨트롤러도 대부분의 빈처럼 싱글톤
+  - DI 작업은 빈 오브젝트가 처음 만들어질 때 단 한번만 진행됨
+  - 따라서 ServiceRequest 빈을 프로토타입으로 만들었다고 하더라도 컨트롤러에 DI 하기 위해 컨테이너에 요청할 때 딱 한 번만 오브젝트가 생성되고 새로운
+  ServiceRequest 오브젝트는 만들어지지 않음
+- new 키워드를 대신하기 위해 사용되는 것이 프로토타입의 용도라고 본다면 DI는 프로토타입 빈을 사용하기 적합한 방법이 아님
+  - 프로토타입 빈이 DI 방식으로 사용되는 경우는 매우 드뭄
+
+#### 프로토타입 빈의 DL 전략
+
+- ApplicationContext를 DI 받아둔 뒤 코드에서 getBean() 메서드를 직접 호출하는 방법
+  - 가장 단순하고 직접적인 방식, 사용하기도 어렵지 않음
+  - 스프링의 API가 일반 애플리케이션 코드에서 사용된다는 사실이 불편하게 느껴질 수 있음
+    - 환경과 기술에 종속되지 않는 POJO 방식으로 개발할 수 있다는 스프링의 장점을 극대화 못시킴
+  - 단위 테스트를 작성하려면 ApplicationContext라는 거대한 인터페이스의 목 오브젝트를 만들어야 하는 부담도 뒤따름
+- 스프링은 프로토타입 빈처럼 DL 방식을 코드에서 사용해야 할 경우 직접 ApplicationContext를 이용하는 것 외에도 다양한 방법을 제공함
+- ApplicationContext, BeanFactory
+  - 이미 사용한 방법
+  - DI를 받은 뒤 getBean() 메서드를 직접 호출해서 빈을 가져옴
+  - 사용하기는 간단하지만 코드에 스프링 API가 직접 등장한다는 단점이 있음
+- ObjectFactory, ObjectFactoryCreatingFactoryBean
+  - 직접 애플리케이션 컨텍스트를 사용하지 않으려면 중간에 컨텍스트에 getBean()을 호출해주는 역할을 맡을 오브젝트를 두면 됨
+  - ApplicationContext를 DI 받아서 getBean()을 호출해 원하는 프로토타입 빈을 가져오는 방식으로 동작하는 팩토리를 하나 만들어서
+  빈으로 등록해두고, 이 팩토리 역할을 하는 빈을 DI 받아서 필요할 때 getObject()와 같은 메서드를 호출해 빈을 가져올 수 있도록 만드는 바업ㅂ
+  - 로우레벨의 API를 사용하지 않기 때문에 코드가 깔끔해짐
+
+  ```java
+  @Resource
+  private ObjectFactory<ServiceRequest> serviceRequestFactory;
+  
+  public void serviceRequestFormSubmit(HttpServletRequest request) {
+      ServiceRequest serviceRequest = this.serviceRequestFactory.getObject();
+    ...
+  }
+  
+  @Configuration
+  public class ObjectFactoryConfig {
+      @Bean
+      public ObjectFactoryCreatingFactoryBean serviceRequestFactory() {
+          ObejctFactoryCreatingFactoryBeans factoryBean = new ObjectFactoryCreatingFactoryBean();
+          factoryBean.setTargetBeanName("serviceRequest");
+          return factoryBean;
+      }
+  }
+  ```
+  
+  - ObjectFacotry는 프로토타입 빈뿐 아니라 DL을 이용해 가져와야 하는 모든 경우에 적용할 수 있음
+- ServiceLocatorFactoryBean
+  - 프레임워크의 인터페이스를 애플리케이션 코드에서 사용하는 것이 맘에 들지 않을 수 있음
+  - ServiceLocatorFactoryBean은 ObjectFactory처럼 스프링이 미리 정의해 둔 인터페이스를 사용하지 않아도 됨
+  - DL 방식으로 가져올 빈을 리턴하는 임의의 이름을 가진 메서드가 정의된 인터페이스가 있으면 됨
+
+  ```java
+  public interface ServiceRequestFactory {
+      ServiceRequest getServiceFactory();
+  }
+  ```
+- 메서드 주입
+  - @Autowired를 메서드에 붙여서 메서드 파라미터에 의해 DI 되게 하는 메서드를 이용한 주입 방식과 혼동하면 안됨
+  - 메서드 주입은 메서드를 통한 주입이 아니라 메서드 코드 자체를 주입하는 것
+  - 일정한 규칙을 따르는 추상 메서드를 작성해두면 ApplicationContext와 getBean() 메서드를 사용해서 새로운 프로토타입 빈을
+  가져오는 기능을 담당하는 메서드를 런타임 시에 추가해주는 기술
+
+```java
+abstract public ServiceRequest getServiceRequest();
+
+public void serviceRequestFormSubmit(HttpServletRequest request) {
+    ServiceRequest serviceRequest = this.getServiceRequest();
+}
+```
+
+- Provider
+  - Provider 인터페이스를 @Inject, @Autowired, @Resource 중 하나를 이용해 DI 되도록 지정해주기만 하면 스프링이 자동으로
+  Provider를 구현한 오브젝트를 생성해서 주입해줌
+  - 오브젝트 팩토리 주입
+
+```java
+@Inject
+Provider<ServiceReuqest> serviceRequestProvider;
+
+public void serviceRequestFormSubmit(HttpServletRequest request) {
+        ServiceRequest serviceRequest = this.serviceRequestProvider.get();
+  ...
+}
+```
+
+### 스코프
+
+#### 스코프의 종류
+
+- 요청 스코프
+  - 하나의 웹 요청 안에서 만들어지고 해당 요청이 끝날 때 제거됨
+  - 각 요청별로 독립적인 빈이 만들어지기 때문에 상태 값을 저장해둬도 안전함
+  - DL을 사용하는 것이 편리하지만 DI를 이용할 수도 있음
+- 세션 스코프, 글로벌세션 스코프
+  - HTTP 세션과 같은 존재 범위를 갖는 빈으로 만들어주는 스코프
+- 애플리케이션 스코프
+  - 서블릿 컨텍스트에 저장되는 빈 오브젝트
+  - 웹 애플리케이션이 존재하는 동안 유지됨
+
+------------
+
+## 기타 빈 설정 메타정보
+
+### 빈 이름
+
+#### 애노테이션의 빈 이름
+
+- @Component와 같은 스테레오타입의 애노테이션을 부여해주고 빈 스캐너에 의해 자동인식되도록 만든 경우에는 보통 클래스 이름을 그대로 빈 이름으로 사용ㅎ,ㅁ
+  - 클래스 이름 첫 글자를 소문자로 바꿈
+- 자동 빈 스캔 대상이라면 스테레오타입 애노테이션의 디폴트 엘리먼트값으로 이름을 지정해주면 됨
+
+```java
+@Component("myUserService")
+public class UserService
+
+@Component
+@Named("myUserService")
+public class UserService
+```
+
+- 자바 코드를 이용한 빈 등록 방식에선 @Bean 애노테이션의 name 엘리먼트 이용
+
+### 빈 생명주기 메서드
+
+#### 초기화 메서드
+
+- 빈 오브젝트가 생성되고 DI 작업까지 마친 다음에 실행되는 메서드
+- 오브젝트의 기본적인 초기화 작업은 생성자에서 진행하면 되지만 DI를 통해 모든 프로퍼티가 주입된 후에야 가능한 초기화 작업도 있음
+  - 이럴 경우 사용하는 것이 초기화 메서드
+- 초기화 콜백 인터페이스
+  - InitializingBean 인터페이스를 구현해서 빈을 작성하는 방법
+  - InitializingBean의 afterPropertiesSet() 메서드는 프로퍼티 설정까지 마친 뒤에 호출됨
+  - 별로 권장하지 않음
+  - 애플리케이션 빈 코드에 스프링 인터페이스를 노출하기 때문
+- init-method 지정
+  - XML을 이용해 빈을 등록한다면 bean 태그에 init-method 애트리뷰트를 넣어 초기화 작업을 수행할 메서드 이름을 지정할 수 있음
+  - 스프링 API가 노출되지 않지만 코드만 보고는 초기화 메서드가 호출될지 알 수 없기 때문에 이해하는 데 불편할 수 있음
+- @PostConstruct
+  - 초기화를 담당할 메서드에 애노테이션을 붙임
+  - 직관적
+  - 가장 사용이 권장되는 방식
+- @Bean(init-method)
+  - @Bean 애노테이션의 init-method 엘리먼트 사용
+
+#### 제거 메서드
+
+- 컨테이너가 종료될 때 호출되서 빈이 사용한 리소스를 반환하거나 종료 전에 처리해야 할 작업을 수행
+- 제거 콜백 인터페이스
+  - DisposableBean 인터페이스를 구현해서 destory()를 구현하는 방법
+- destory-method
+  - bean 태그에 destory-method 추가
+- @PreDestory
+  - 컨테이너가 종료될 메서드에 사용
+- @Bean(destoryMethod)
+  - 애노테이션의 엘리먼트
+
+### 팩토리 빈과 팩토리 메서드
+
+- 생성자 대신 오브젝트를 생성해주는 코드의 도움을 받아서 빈 오브젝트를 생성하는 것을 팩토리 빈이라 부름
+  - 빈 팩토리와 비슷하지만 전혀 다른 것
+- 팩토리 빈 자신은 빈 오브젝트로 사용되지 않음
+  - 대신 빈 오브젝트를 만들어주는 기능만 제공해줄 뿐
+
+------------------
+
+## 스프링 3.1의 IoC 컨테이너와 DI
+
+- 스프링 3.1에 새롭게 도입된 IoC/Di 기술
+  - 강화된 자바 코드 빈 설정
+  - 런타임 환경 추상화
+
+### 빈의 역할과 구분
+
+#### 빈의 종류
+
+- 애플리케이션 로직 빈
+  - 데이터 로직을 다루는 DAO, 비즈니스 로직과 기반 서비스를 다루는 서비스 오브젝트, 웹 로직을 다루는 컨트롤러 오브젝트 등
+- 애플리케이션 인프라 빈
+  - DAO가 사용하는 DataSource 오브젝트 등
+  - 애플리케이션의 로직을 직접 담당하진 않지만 외부 리소스와의 연결을 관리하면서 애플리케이션 빈을 도와줌
+- 컨테이너 인프라 빈
+  - 애플리케이션 로직을 담고 있지 않으며 애플리케이션 로직을 담은 빈과 관계를 맺고 외부 서비스를 사용하는 데 도움을 주지도 않지만
+  스프링 컨테이너의 기능에 관여하는 빈
+
+### 컨테이너 인프라 빈을 위한 자바 코드 메타정보
+
+#### IoC/DI 설정 방법의 발점
+
+- 스프링1.x
+  - XML을 이용한 빈 등록 방법을 주로 사용
+  - bean 태그
+- 스프링 2.0
+  - 스키마와 네임스페이스를 가진 전용 태그 제공
+  - 커스텀 태그 생성 가능
+- 스프링 2.5
+  - 빈 스캐너와 스테레오타입 애노테이션을 이용한 빈 자동등록 방식과 애노테이션 기반의 의존관계 설정 방법 등장
+  - 애노테이션을 메타정보로 활용하는 빈 등록과 관계 설정 방식은 외부에서 작성된 클래스를 빈으로 등록할 때는 적용할 수가 없는 한계
+- 스프링 3.0
+  - 자바 코드를 이용해 빈 설정정보 또는 빈 설정 코드를 만드는 일이 가능
+- 스프링 3.1
+  - 컨테이너 인프라 빈도 자바 코드로 등록 할 수 있게 됨
+
+#### 자바 코드를 이용한 컨테이너 인프라 빈 등록
+
+- @ComponentScan
+  - 스테레오타입 애노테이션이 붙은 빈을 자동으로 스캔해서 등록해줌
+  - 
