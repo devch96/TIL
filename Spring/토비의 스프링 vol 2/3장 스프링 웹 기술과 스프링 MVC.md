@@ -147,3 +147,123 @@
 - 웹 프레젠테이션 계층은 서블릿 또는 포틀릿 컨테이너가 제공되는 서버환경이 있어야 동작
   - 테스트 목적으로 배치하지 않은 채로 코드 실행은 할 수 있긴함
 
+--------------
+
+## 컨트롤러
+
+- MVC의 세 가지 컴포넌트 중에서 가장 많은 책임을 지고 있음
+  - 서블릿이 넘겨주는 HTTP 요청은 HttpServletRequest 오브젝트에 담겨 있음
+- HttpServletRequest에 담겨 있는 사용자의 요청을 모두 분석한 후에 비로소 서비스 계층의 비즈니스 로직을 담당하는 메서드를 부름
+- 컨트롤러는 서비스 계층의 메서드가 돌려준 결과를 보고 뷰를 결정해야 함
+  - 때로는 페이지가 바뀌도록 리다이렉트
+
+### 컨트롤러의 종류와 핸들러 어댑터
+
+- 스프링 MVC가 지원하는 컨트롤러의 종류는 네 가지
+  - 각 컨트롤러를 DispatcherServlet에 연결해주는 핸들러 어댑터가 하나씩 있어야 하므로 핸드러 어댑터도 네 개
+  - SimpleServletHandlerAdapter를 제외한 세 개의 핸들러 어댑터는 DispatcherServlet에 디폴트 전략으로 설정되어 있음
+
+#### Servlet과 SimpleServletHandlerAdapter
+
+- 표준 서블릿
+  - javax.servlet.Servlet을 구현한 서블릿 클래스를 스프링 MVC의 컨트롤러로 사용할 수 있음
+- 서블릿이라면 web.xml에 등록하고 사용하면 되는데 굳이 스프링 MVC의 컨트롤러로 사용?
+  - 기존에 서블릿으로 개발된 코드를 스프링 애플리케이션에 가져와 사용하려면 일단
+  서블릿을 web.xml에 별도로 등록하지 말고 MVC 컨트롤러로 등록해서 사용하는 것이 좋음
+  - 서블릿 코드를 점진적으로 스프링 애플리케이션에 맞게 포팅할 때 유용
+- 서블릿이 컨트롤러 빈으로 등록된 경우에는 자동으로 init(), destory()와 같은 생명주기 메서드가 호출되지 않는다는 점을 유의
+  - 서블릿에서 초기화 작업을 하는 코드가 있다면 init-method 애트리뷰트나 @PostConstruct 애노테이션 등을 이용해 빈 생성 후에 초기화 메서드가 실행되게 해야 함
+
+```java
+public class ServletControllerTest extends AbstractDispatcherServletTest {
+    @Test
+    public void helloServletController() throws ServletException, IOException {
+        setClasses(SimpleServletHandlerAdapter.class, HelloServlet.class);
+        initRequest("/hello").addParameter("name", "Spring");
+        
+        assertThat(runService().getContentAsString(), is("Hello Spring"));
+    }
+    
+    @Component("/hello")
+    static class HelloServlet extends HttpServlet {
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+            String name = req.getParameter("name");
+            resp.getWriter().print("Hello " + name);
+        }
+    }
+}
+```
+
+- 서블릿 타입의 컨트롤러를 DispatcherServlet이 호출해줄 때 필요한 핸들러 어댑터를 등록하는 것
+  - 서블릿 컨트롤러용 핸들러 어댑터는 SimpleServletHandlerAdapter 클래스
+- Servlet 타입의 컨트롤러는 모델과 뷰를 리턴하지 않음
+  - 스프링 MVC의 모델과 뷰 라는 개념을 알지 못하는 표준 서블릿을 사용했기 때문
+  - HttpServletResponse에 넣어준 정보를 확인하는 방법 사용
+  - DispatcherServlet은 컨트롤러가 ModelAndView 타입의 오브젝트 대신 null을 리턴하면 뷰를 호출하는 과정을
+  생략하고 작업을 마침
+  - 서블릿 컨트롤러처럼 직접 HttpServletResponse에 결과를 넣는 컨트롤러도 있기 때문
+
+#### HttpRequestHandler와 HttpRequestHandlerAdapter
+
+- 인터페이스로 정의된 컨트롤러 타입
+
+```java
+public interface HttpRequestHandler {
+    void handleRequest(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException;
+}
+```
+
+- 서블릿 인터페이스와 비슷함
+- 실제로 HttpRequestHandler는 서블릿처럼 동작하는 컨트롤러를 만들기 위해 사용함
+  - 전형적인 서블릿 스펙을 준수할 필요 없이 HTTP 프로토콜을 기반으로 한 전용 서비스를 만드려고 할 때 사용
+- 스프링은 HttpRequestHandler를 이용하여 자바의 RMI(Remote Method Invocation)를 대체할 수 있는 HTTP 기반의 가벼운 원격 호출 서비스인
+HTTP Invoker를 제공함
+- HttpRequestHandler는 모델과 뷰 개념이 없는 HTTP 기반의 RMI와 같은 로우레벨 서비스를 개발할 때 이용함
+- 디폴트 전략이므로 빈으로 등록해줄 필요는 없음
+
+####  Controller와 SimpleControllerHandlerAdapter
+
+```java
+public interface Controller {
+    ModelAndView handleRequest(HttpServletRequest request, HttpServletResponse response) throws Exception;
+}
+```
+
+- DispatcherServlet이 컨트롤러와 주고받는 정보를 그대로 메서드의 파라미터와 리턴 값으로 갖고 있음
+  - 가장 대표적인 컨트롤러 타입
+  - 스프링 3.0의 애노테이션과 관례를 이용한 컨트롤러가 등장하기 전까지 MVC 컨트롤러라고 하면 바로 이 Controller였음
+- Controller 타입의 컨트롤러는 Controller 인터페이스를 구현하기만 하면 되기 때문에 특정 클래스를 상속하도록 강제하는 여타 MVC 프레임워크의 컨트롤러보다
+유연하게 컨트롤러 클래스를 설계할 수 있음
+  - 하지만 실제로는 이 Controller 인터페이스를 직접 구현하는 것은 권장되지 않음
+  - 적어도 웹 브라우저를 클라이언트로 갖는 컨트롤러로서의 필수 기능이 구현되어 있는 AbstractController를 상속해서 컨트롤러를 만드는 게 편리하기 때문
+- AbstractController는 다음과 같은 웹 개발에 유용하게 쓸 수 있는 프로퍼티를 제공함
+  - synchronizeOnSession
+    - HTTP 세션에 대한 동기화 여부를 결정하는 프로퍼티
+  - supportedMethods
+    - HTTP 메서드(GET, POST 등)를 지정할 수 있음
+    - 디폴트는 모든 종류의 HTTP 메서드를 다 허용함
+  - useExpiresHeader, useCacheControlHeader, useCacheControlNoStore, cacheSeconds
+    - HTTP 1.0/ 1.1의 Expires, Cache-Control HTTP 헤더를 이용해 브라우저의 캐시 설정정보를 보내줄 것인지를 결정
+- 애플리케이션의 컨트롤러가 특정 클래스를 상속받는 것이 불편하게 느껴진다면 전용 컨트롤러 인터페이스를 정의하고 핸들러 어댑터를 만드는 방법도 가능
+
+#### AnnotationMethodHandlerAdapter
+
+- 다른 핸들러 어댑터와는 다른 특징이 있음
+- 컨트롤러의 타입이 정해져 있지 않다는 점
+- 클래스와 메서드에 붙은 몇 가지 애너테이션의 정보와 메서드 이름, 파라미터, 리턴 타입에 대한 규칙 등을 종합적으로
+분석해서 컨트롤러를 선별하고 호출 방식을 결정함
+  - 상당히 유연한 방식으로 컨트롤러를 작성할 수 있음
+- 또 다른 특징은 컨트롤러 하나가 하나 이상의 URL에 매핑될 수 있다는 점
+  - 다른 컨트롤러는 특별한 확장 기능을 사용하는 경우를 제외하면 URL당 하나의 컨트롤러가 매핑되는 구조
+  - 웹 요청의 개수가 늘어나면 컨트롤러도 늘어남
+
+```java
+@Controller
+public class HelloController {
+    @RequestMapping("/hello")
+    public String hello(@RequestParam("name") String name, ModelMap map) {
+        map.put("message", "Hello " + name);
+        return "/WEB-INF/view/hello.jsp";
+    }
+}
+```
