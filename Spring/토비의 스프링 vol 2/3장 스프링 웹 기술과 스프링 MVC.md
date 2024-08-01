@@ -267,3 +267,126 @@ public class HelloController {
     }
 }
 ```
+
+### 핸들러 매핑
+
+- 핸들러 매핑은 HTTP 요청정보를 이용해서 이를 처리할 핸들러 오브젝트(컨트롤러)를 찾아주는 기능을 가진 DispatcherServlet의 전략
+- 컨트롤러의 타입과는 상관없음
+  - 하나의 핸들러 매핑 전략이 여러 가지 타입의 컨트롤러를 선택할 수 있다는 뜻
+- 스프링은 기본적으로 다섯 가지 핸들러 매핑 제공
+  - 디폴트로 등록된 핸들러 매핑은 BeanNameUrlHandlerMapping과 DefaultAnnotationHandlerMapping
+
+#### BeanNameUrlHandlerMapping
+
+- 디폴트 핸들러 매핑의 하나
+- 빈의 이름에 들어 있는 URL을 HTTP 요청의 URL과 비교해서 일치하는 빈을 찾아줌
+  - 가장 직관적이고 사용하기 쉬운 핸들러 매핑전략
+- URL에는 ANT 패턴이라고 불리는 *나 **, *?와 같은 와일드카드를 사용하는 패턴을 넣을 수 있음
+- 패턴에 일치하는 모든 URL을 가진 요청이 해당 컨트롤러 빈으로 매핑됨
+- 빠르고 쉽게 URL 매핑정보를 지정할 수 있지만 컨트롤러의 개수가 많아지면 URL 정보가 XML 빈 선언이나 클래스 애노테이션 등에 분산되어 나타나므로
+전체적인 매핑구조를 한눈에 파악하고 관리하기 불편함
+
+#### ControllerBeanNameHandlerMapping
+
+- 빈의 아이디나 빈 이름을 이용해 매핑해주는 핸들러 매핑 전략
+
+```java
+@Component("hello")
+public class MyController implements Controller {
+  ...
+}
+```
+
+- 빈 아이디에 / 를 붙여줌
+- /hello URL에 매핑해줌
+- 디폴트 핸들러 매핑이 아니므로 사용하려면 전략 빈으로 등록해야 함
+- 특정 전략 클래스를 빈으로 등록한 경우에는 디폴트 전략은 모두 무시됨
+  - 주의해야 함
+
+#### ControllerClassNameHandlerMapping
+
+- 빈 이름 대신 클래스 이름을 URL에 매핑해주는 핸들러 매핑 클래스
+- 클래스 이름을 모두 URL로 사용하지만 Controller로 끝나는 경우에는 Controller를 뺀 나머지 이름을 URL에 매핑해줌
+
+```java
+public class HelloController implements Controller {
+  ...
+}
+```
+
+#### SimpleUrlHandlerMapping
+
+- BeanNameUrlHandlerMapping은 빈 이름에 매핑정보를 넣기 때문에 매핑정보를 관리하기 어렵다는 단점이 있음
+- URL과 컨트롤러의 매핑정보를 한곳에 모아놓을 수 있는 핸들러 매핑 전략
+- 매핑정보는 SImpleUrlHandlerMapping 빈의 프로퍼티에 넣어줌
+- 디폴트가 아니기 때문에 빈을 등록해야 사용가능함
+- 매핑할 컨트롤러 빈의 이름을 직접 적어줘야 하기 때문에 오타 등의 오류가 발생할 가능성이 있음
+
+#### DefaultAnnotationHandlerMapping
+
+- 컨트롤러 클래스나 메서드에 직접 부여하고 이를 이용해 매핑하는 전략
+- @RequestMapping
+- URL뿐 아니라 HTTP 메서드, 파라미터와 HTTP 헤더정보까지 매핑에 활용할 수 있다
+  - URL이 같지만 메서드를 분리한다거나 파라미터가 지정됐을 때만 따로 분리하는 식의 컨트롤러 매핑이 가능
+- 매핑 애노테이션의 사용 정책과 작성 기준을 잘 만들어두지 않으면, 개발자마다 제멋대로 매핑 방식을 적용해서 매핑정보가 지저분해지고 관리하기
+힘들어질 수도 있으니 주의해야 함
+
+#### 기타 공통 설정정보
+
+- order
+  - 핸들러 매핑은 한 개 이상을 동시에 사용할 수 있음
+  - 이미 기본으로 두 개의 핸들러 매핑이 등록되어 있음
+  - 두 개 이상의 핸들러 매핑을 적용했을 때는 URL 매핑정보가 중복되는 경우를 주의해야 함
+  - 우선순위를 지정할 수 있음
+  - Order 인터페이스가 제공하는 order 프로퍼티를 이용해 적용 우선순위를 지정할 수 있음
+  - 디폴트 핸들러 매핑 전략에 order 프로퍼티를 설정해주려면 빈으로 등록 해야 함
+- defaultHandler
+  - 핸들러 매핑 빈의 defaultHandler 프로퍼티를 지정해두면 URL을 매핑할 대상을 찾지 못했을 경우 자동으로 디폴트 핸들러를 선택해줌
+  - 핸들러 매핑에서 URL을 매핑할 컨트롤러를 찾지 못하면 404 에러가 발생하는데, 404 에러를 돌려주는 대신 디폴트 핸들러로 넘겨서 안내 메시지를 뿌려주는 것이 좋은 방법
+- alwaysUseFullPath
+  - 특별한 이유가 있어서 URL 전체를 사용해서 컨트롤러를 매핑하기 원한다면 핸들러 매핑 빈의 alwaysUseFullPath 프로퍼티를 true로 선언해주면 됨
+- detectHandlersInAncestorContexts
+  - 서블릿 컨텍스트의 부모 컨텍스트는 루트 컨텍스트임
+  - 자식 컨텍스트의 빈은 부모 컨텍스트의 빈을 참조할 수 있음
+  - 하지만 핸들러 매핑의 경우 현재 컨텍스트, 서블릿 컨텍스트 안에서만 매핑할 컨트롤러를 찾음
+  - 웹 환경에 종속적인 컨트롤러 빈은 서블릿 컨텍스트에만 두는 것이 바람직하지만 필요할 경우 true로 바꾸면 됨
+
+### 핸들러 인터셉터
+
+- 핸들러 매핑의 역할은 기본적으로 URL과 요청정보로부터 컨트롤러 빈을 찾아주는 것
+- 한 가지 중요한 기능이 더 있음
+  - 핸들러 인터셉터를 적용해주는 것
+- 핸들러 인터셉터는 DispatcherServlet이 컨트롤러를 호출하기 전과 후에 요청과 응답을 참조하거나 가공할 수 있는 일종의 필터
+  - 서블릿 필터와 유사한 개념
+- 핸들러 매핑은 DispatcherServlet으로부터 매핑 작업을 요청받으면 그 결과로 핸들러 실행 체인(HandlerExecutionChain)을 돌려줌
+- 핸들러 실행 체인은 하나 이상의 핸들러 인터셉터를 거쳐서 컨트롤러가 실행될 수 있도록 구성되어 있음
+- 핸들러 인터셉터를 전혀 등록해주지 않았다면 바로 컨트롤러가 실행됨
+- 하나 이상의 핸들러 인터셉터를 지정했다면 순서에 따라 인터셉터를 거친 후에 컨트롤러가 호출됨
+- HttpServletRequest, HttpServletResponse뿐 아니라 실행될 컨트롤러 빈 오브젝트, 컨트롤러가 돌려주는 ModelAndView, 발생한 예외 등을 제공받을 수
+있기 때문에 서블릿 필터보다 더 정교하고 편리하게 인터셉터를 만들 수 있음
+- 핸들러 인터셉터는 빈이기 때문에 DI를 통해 다른 빈을 활용할 수 있음
+
+#### HandlerInterceptor
+
+- 핸들러 인터셉터는 HandlerInterceptor 인터페이스를 구현해서 만듬
+- boolean preHandler(HttpServletRequest request, HttpServletResponse response, Object handler) throws Excpetion
+  - 컨트롤러가 호출되기 전에 실행됨
+  - 리턴 값이 true이면 핸들러 실행 체인의 다음 단계로 진행되지만, false 라면 작업을 중단하고 리턴하므로 컨트롤러와 남은
+  인터셉터들은 실행되지 않음
+- void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) throws Excpetion
+  - 컨트롤러를 실행하고 난 후에 호출됨
+    - 일종의 후처리 작업
+  - 컨트롤러가 돌려준 ModelAndView 타입의 정보가 제공돼서 컨트롤러 작업 결과를 참조하거나 조작할 수 있음
+- void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception
+  - 모든 뷰에서 최종 결과를 생성하는 일을 포함한 모든 작업이 다 완료된 후에 실행됨
+  - 요청 처리 중에 사용한 리소스를 반환해주기에 적당한 메서드
+
+#### 핸들러 인터셉터 적용
+
+- 핸들러 매핑 클래스를 빈으로 등록하고 매핑 빈의 interceptors 프로퍼티를 이용해 핸들러 인터셉터 빈의 레퍼런스를 넣어주면 됨
+
+### 컨트롤러 확장
+
+- Controller를 이용해 만든 기반 컨트롤러에는 개별 컨트롤러가 특정 클래스를 상속하도록 강제한다는 단점이 있음
+- 이럴 경우 핸들러 어댑터를 직접 구현해서 아예 새로운 컨트롤러 타입을 도입하는 방법을 고려해봐야 함
+- 
