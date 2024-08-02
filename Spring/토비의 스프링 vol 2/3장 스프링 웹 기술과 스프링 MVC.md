@@ -389,4 +389,87 @@ public class HelloController implements Controller {
 
 - Controller를 이용해 만든 기반 컨트롤러에는 개별 컨트롤러가 특정 클래스를 상속하도록 강제한다는 단점이 있음
 - 이럴 경우 핸들러 어댑터를 직접 구현해서 아예 새로운 컨트롤러 타입을 도입하는 방법을 고려해봐야 함
+
+```java
+public interface HandlerAdapter {
+    boolean supports(Object handler); // 이 핸들러 어댑터가 지원하는 컨트롤러 타입인지 확인
+    ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception;
+    // DispatcherServlet의 요청을 받아 컨트롤러를 실행해주는 메서드
+    long getLastModified(HttpServletRequest request, Object handler);
+    // HttpSErvlet의 getLastModified()를 지원해주는 메서드
+}
+```
+
+-----------------------------
+
+## 뷰
+
+- MVC 아키텍처에서 모델이 가진 정보를 어떻게 표현해야 하는지에 대한 로직을 갖고 있는 컴포넌트
+- 컨트롤러가 작업을 마친 뷰 정보를 ModelAndView 타입 오브젝트에 담아서 DispatcherServlet에 돌려주는 방법은 두 가지가 있음
+  - View 타입의 오브젝트를 돌려주는 방법
+  - 뷰 이름을 돌려주는 방법
+- 뷰 이름을 돌려주는 경우는 뷰 이름으로부터 실제 사용할 뷰를 결정해주는 뷰 리졸버가 필요함
+
+### 뷰
+
+```java
+public interface View {
+    String getContentType();
+    
+    void render(Map<String, ?> model, HttpServletRequest request, HttpServletResponse response) throws Exception;
+}
+```
+
+- View 인터페이스는 뷰 오브젝트가 생성하는 콘텐트의 타입 정보를 제공해주는 getContentType() 메서드와 모델을 전달받아 클라이언트에
+돌려줄 결과물을 만들어주는 render() 메서드 두 가지로 구성됨
+- View 인터페이스를 직접 구현해서 뷰를 만들어야 할 필요는 없음
+  - 스프링이 웹에서 자주 사용되는 타입의 콘텐트를 생성해주는 다양한 뷰를 이미 구현해놓았기 때문
+- 뷰를 사용하는 방법은 두 가지가 있음
+  - 스프링이 제공하는 기반 뷰 클래스를 확장해서 코드로 뷰를 만드는 방법
+    - 엑셀, PDF, RSS 피드와 같은 뷰는 콘텐트를 생성하는 API를 사용해서 뷰 로직을 작성함
+  - 스프링이 제공하는 뷰를 활용하되 뷰 클래스 자체를 상속하거나 코드를 작성하지 않음
+    - JSP나 프리마커 같은 템플릿 파일을 사용하거나 모델을 자동으로 뷰로 전환하는 로직을 적용하는 방법
+
+#### InternalResourceView와 JstlView
+
+- forward()나 include()를 이용하는 뷰
+  - 다른 서블릿을 실행해서 그 결과를 현재 서블릿의 결과로 사용하거나 추가하는 방식
+  - JSP 뷰를 적용할때 사용
+- 스프링 MVC 컨트롤러에서 InternalResourceView를 만들어 ModelAndView에 넣어서 DispatcherServlet으로 넘겨주면
+JSP로 포워딩하는 기능을 가진 뷰를 사용할 수 있음
+
+```java
+public class HelloController implements Controller {
+    public ModelAndView handleRequest(HttpServletRequest req, HttpServletResponse) throws Exception {
+        Map<String, Object> model = new HashMap<>();
+        model.put("meesage", message);
+        
+        View view = new InternalResourceView("/WEB-INF/view/hello.jsp");
+        
+        return new ModelAndView(view, model);
+    }
+}
+```
+
+- forward() 대신 include()를 사용하려면 alwaysInclude 프로퍼티를 true로 바꿔주면 됨
+
+#### RedirectView
+
+- HttpServletResponse의 sendRedirect()를 호출해주는 기능을 가진 뷰
+- 실제 뷰가 생성되는 것이 아닌 URL만 만들어져 다른 페이지로 리다이렉트됨
+  - 모델정보가 있다면 URL 뒤에 파라미터로 추가됨
+- 컨트롤러가 직접 RedirectView 오브젝트를 만들어서 리턴해도 되지만 뷰 리졸버가 인식할 수 있도록 redirect: 로 시작하는 뷰 이름을 사용하면 편리함
+  -  return new ModelAndView("redirect:/main");
+
+#### VelocityView, FreeMakerView
+
+- 벨로시티와 프리마커라는 두 개의 대표적인 자바 템플릿 엔진을 뷰로 사용하게 해줌
+  - JSP와 마찬가지로 컨트롤러에서 직접 뷰 오브젝트를 만드는 대신 VelocityViewResolver와 FreeMakerViewResolver를 통해
+  자동으로 뷰가 만들어져 사용되게 하는 편이 남
+
+#### MarshallingView
+
+- application/xml 타입의 XML 컨텐츠를 작성하게 해주는 뷰
+- 미리 준비해둔 마샬러 빈을 지정하고 모델에서 변환에 사용할 오브젝트를 지정해주면 OXM 마샬러를 통해 모델 오브젝트를 XML로 변환해서 뷰의 결과로
+사용할 수 있음
 - 
