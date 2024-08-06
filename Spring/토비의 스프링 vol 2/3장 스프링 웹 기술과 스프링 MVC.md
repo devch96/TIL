@@ -474,4 +474,205 @@ public class HelloController implements Controller {
 사용할 수 있음
 - 마샬링 뷰를 컨트롤러에서 직접 DI 받는 대신 뷰 리졸버를 이용해서 선택할 수 있음
   - 컨트롤러에서 뷰 이름만 리턴하고 뷰 이름과 마샬링 뷰 빈을 연결해주는 정보를 별도의 설정파일이나 XML 문서를 통해 지정해주는 방법을 사용함
-- 
+
+#### AbstractExcelView, AbstractJExcelView, AbstractPdfView
+
+- 엑셀과 PDF 문서를 만들어주는 뷰
+- Abstract가 붙어 있으니 상속을 해서 코드를 구현해야 하는 뷰
+- AbstractExcelView는 아파치 POI 라이브러리를 이용해 엑셀 뷰를 만들고 AbstractJExcelView는 JExcelAPI를 사용해 엑셀 문서를 만들고
+AbstractPdfView는 iText 프레임워크 API로 PDF 문서를 생성해줌
+
+#### AbstractAtomFeedView, AbstractRssFeedView
+
+- application/atom+xml, application/rss+xml 타입의 피드 문서를 생성해주는 뷰
+- 상속을 통해 피드정보를 생성하는 메서드를 직접 구현해주어야 함
+
+### 뷰 리졸버
+
+- 뷰 리졸버는 핸들러 매핑이 URL로부터 컨트롤러를 찾아주는 것처럼, 뷰 이름으로부터 사용할 뷰 오브젝트를 찾아줌
+- 뷰 리졸버는 ViewResolver 인터페이스를 구현해서 만듬
+- 뷰 리졸버를 빈으로 등록하지 않으면 DispatcherServlet의 디폴트 뷰 리졸버인 InternalResourceViewResolver가 사용됨
+- 핸들러 매핑과 마찬가지로 뷰 리졸버도 하나 이상을 빈으로 등록해서 사용할 수 있음
+  - order 프로퍼티를 이용해 뷰 리졸버의 적용 순서를 지정해주는 것이 좋음
+
+#### InternalResourceViewResolver
+
+- 뷰 리졸버를 지정하지 않았을 때 자동등록되는 디폴트 뷰 리졸버
+  - 주로 JSP를 뷰로 사용하고자 할 때 쓰임
+- 디폴트 상태의 InternalResourceViewResolver를 사용할 경우, /WEB-INF/view/hello.jsp를 뷰로 이용하려면 전체 경로를
+다 적어줘야 함
+  - prefix, suffix 프로퍼티를 이용해 항상 앞뒤에 붙는 내용을 생략할 수 있음
+  - 프로퍼티 설정을 해주려면 결국 InternalResourceViewResolver를 직접 빈으로 등록하는 수 밖에 없음
+
+#### VelocityViewResolver, FreeMarkerViewResolver
+
+- 템플릿 엔진 기반의 뷰인 VelocityView와 FreedMarkerView를 사용하게 해주는 뷰 리졸버
+- 사용 방법은 InternalResourceViewResolver와 비슷함
+
+#### ResourceBundleViewResolver, XmlViewResolver, BeanNameViewResolver
+
+- 여러 가지 종류의 뷰를 혼용하거나 뷰의 종류를 코드 밖에서 변경해줘야 하는 경우에는 외부 리소스 파일에 각 뷰 이름에 해당하는
+뷰 클래스와 설정을 담아두고 이를 참조하는 ResourceBundleViewResolver와 XmlViewResolver를 사용하면 됨
+
+```properties
+hello.(class)=org.springframework.web.servlet.view.JstlView
+hello.url=/WEB-INF/view/hello.jsp
+
+main.(class)=org.springframework.web.servlet.view.velocity.VelocityView
+main.url=main.vm
+```
+
+#### ContentNegotiatingViewResolver
+
+- 직접 뷰 이름으로 뷰 오브젝트를 찾아주지 않는 대신 미디어 타입 정보를 활용해서 다른 뷰 리졸버에게 뷰를 찾도록 위임한 후에 가장
+적절한 뷰를 선정해서 돌려줌
+  - 뷰 리졸버를 결정해주는 리졸버
+- 스프링 3.0에서 새로 추가된 뷰 리졸버
+
+-------------
+
+## 기타 전략
+
+### 핸들러 예외 리졸버
+
+- HandlerExceptionResolver는 컨트롤러의 작업 중에 발생한 예외를 어떻게 처리할지 결정하는 전략
+- 컨트롤러나 그 뒤의 계층에서 던져진 예외는 DispatcherServlet이 일단 전달받은 뒤에 다시 서블릿 밖으로 던져서 서블릿 컨테이너가 처리하게 함
+  - 다른 설정을 하지 않았다면 브라우저에 HTTP Status 500 Internal Server Error 같은 메시지가 출력됨
+  - web.xml에 error-page를 지정해서 예외가 발생했을 때 JSP 안내 페이지 등을 보여줄 수도 있음
+- 핸들러 예외 리졸버가 등록되어 있다면 DispatcherServlet은 먼저 핸들러 예외 리졸버에게 해당 예외를 처리할 수 있는지 확인함
+  - 예외를 처리해주는 핸들러 예외 리졸버가 있다면 예외는 DispatcherServlet 밖으로 던져지지 않고 해당 핸들러 예외 리졸버가 처리함
+
+```java
+public interface HandlerExceptionResolver {
+    ModelAndView resolveException(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex);
+}
+```
+
+- 처리 불가능한 예외라면 null을 리턴함
+- 스프링은 총 네 개의 HandlerExceptionResolver 구현 전략을 제공하고, 그 중 세 개는 디폴트로 등록되도록 설정함
+
+#### AnnotationMethodHandlerExceptionResolver
+
+- 예외가 발생한 컨트롤러 내의 메서드 중에서 @ExceptionHandler 애노테이션이 붙은 메서드를 찾아 예외처리를 맡겨주는 핸들러 예외 리졸버
+  - 스프링 3.0에 새로 추가됨
+  - 디폴트 핸들러 예외 리졸버
+- 메서드를 실행하는 중에 @ExceptionHandler에 지정한 타입의 예외가 발생하는 경우에 호출됨
+- 예외처리용 메서드는 모델과 뷰를 리턴할 수 있는데, 모델과 뷰가 정상적으로 리턴되면 DispatcherServlet은 마치 컨트롤러에서 ModelAndView가
+돌려진 것처럼 뷰를 통해 결과를 만들어줌
+- 특정 컨트롤러의 작업 중에 발생하는 예외만 처리하는 예외 핸들러를 만들고 싶다면 이 방법이 가장 편리
+
+#### ResponseStatusExceptionResolver
+
+- 두 번째 디폴트 핸들러 예외 전략
+- 예외를 특정 HTTP 응답 상태 코드로 전환해주는 것
+  - HTTP 500 에러 대신 의미 있는 HTTP 응답 상태를 돌려주는 방법
+- 예외 클래스에 @ResponseStatus를 붙이고 HttpStatus에 정의되어 있는 HTTP 응답 상태 값을 value 엘리먼트에 지정
+  - 필요하면 reason에 자세한 설명을 넣을 수도 있음
+- ResponseStatusExceptionResolver는 발생한 예외의 클래스에 @ResponseStatus가 있는지 확인하고, 만약 있다면 애노테이션에 지정해둔 HTTP 응답 상태 코드를
+클라이언트에 전달함
+- 단점은 직접 @ResponseStatus를 붙여줄 수 있는 예외 클래스를 만들어 사용해야 한다는 것
+  - 기존에 정의된 예외 클래스에는 바로 적용할 수가 없음
+- @ResponseStatus를 직접 부여할 수 없는 기존 예외가 발생했을 때 HTTP 응답 상태를 지정해주려면 @ExceptionHandler 방식의 핸들러 메서드를 사용하면 됨
+  - 기존의 예외를 처리하는 @ExceptionHandler 메서드를 만들고 리턴 타입은 void
+  - HttpServletResponse를 파라미터로 전달받아서 setStatus() 메서드를 이용해 응답 상태와 에러 메시지 등을 설정
+
+#### DefaultHandlerExceptionResolver
+
+- 디폴트로 등록
+- 다른 디폴트 예외 리졸버에서 처리하지 못한 예외를 다루는 마지막 핸들러 예외 리졸버
+- 스프링에서 내부적으로 발생하는 주요 예외를 처리해주는 표준 예외처리 로직을 담고있음
+- 스프링 MVC 내부에서 발생하는 예외를 다루는 것이므로 크게 신경쓰지 않아도 되나, 다른 핸들러 예외 리졸버를 빈으로 등록한다면 디폴트 예외 리졸버가
+자동으로 적용되지 않기에 함께 등록해주어야 함
+
+#### SimpleMappingExceptionResolver
+
+- web.xml의 error-page와 비슷하게 예외를 처리할 뷰를 지정할 수 있게 해줌
+
+### 지역정보 리졸버
+
+- LocalResolver는 애플리케이션에서 사용하는 지역정보(Locale)를 결정하는 전략
+- 디폴트로는 AcceptHeaderLocalResolver
+  - HTTP 헤더의 지역정보를 그대로 사용함
+
+### 멀티파트 리졸버
+
+- 파일 업로드와 같이 멀티파트 포맷의 요청정보를 처리하는 전략을 설정할 수 있음
+- DispatcherServlet은 클라이언트로부터 멀티파트 요청을 받으면 멀티파트 리졸버에게 요청해서 HttpServletRequest의 확장 타입인
+MultipartHttpServletRequest 오브젝트로 전환함
+  - MultipartHttpServletRequest에는 멀티파트를 디코딩한 내용과 이를 참조하거나 조작할 수 있는 기능이 있음
+- 멀티파트 리졸버 전략은 디폴트로 등록된 것이 없기 때문에 빈을 등록해주어야 함
+
+--------------
+
+## 스프링 3.1의 MVC
+
+### 플래시 맵 매니저 전략
+
+#### 플래시 맵
+
+- 플래시 애트리뷰트를 저장하는 맵
+  - 플래시 애트리뷰트란 하나의 요청에서 생성되어 다음 요청으로 전달되는 정보
+  - 웹 요청 사이에 전달되는 정보라면 세션을 생각할 수 있겠지만 플래시 애트리뷰트는 세션에 저장되는 정보처럼 오래 유지되지 않음
+  - 다음 요청에서 한 번 사용되고 바로 제거되는 특징이 있음
+  - Post/Redirect/Get 패턴을 적용하는 경우 POST 단계의 작업 결과 메시지를 리다이렉트된 페이지로 전달할 때 주로 사용함
+- AJAX를 이용한 서버 폴링처럼 사용자의 액션 없이 수시로 서버로 요청을 보내는 기능을 가진 웹 페이지에선 자칫하면 POST와 REDIRECT 사이에 다른 요청이 끼어들
+위험이 있음
+  - 플래시 애트리뷰트가 특정 페이지의 요청을 처리할 때만 사용되도록 URL 경로나 파라미터 같은 URL 조건을 지정할 필요가 있음
+- 플래시 애트리뷰트가 저장된 뒤 브라우저를 중간에 닫거나 강제로 다른 페이지로 이동해 서버에 저장된 플래시 애트리뷰트가 사용되고 제거되지 않아 메모리 누수 발생 위험이 있음
+  - 플래시 애트리뷰트에 제한시간을 두고 시간이 지나면 강제로 ㅈ제거할 필요도 있음
+
+```java
+FlashMap fm = new FlashMap();
+fm.put("message", "abcd");
+fm.setTargetRequestPath("/user/list");
+fm.startExpirationPeriod(10); // 초
+```
+
+#### 플래시 맵 매니저
+
+- 컨트롤러에서 만들어진 플래시 맵 오브젝트는 요청이 끝나기 전에 서버 어딘가에 저장돼야 함
+  - 다음 요청이 올 때까지 정보를 유지했다가 사용할 수 있음
+- 플래시 맵을 저장, 유지, 조회, 제거하는 등의 작업을 담당하는 오브젝트를 플래시 맵 매니저라 함
+  - FlashMapManager 인터페이스를 구현해서 만듬
+- 플래시 맵 매니저는 DispatcherServlet이 미리 준비해둔 것을 사용하면 됨
+  - RequestContextUtils.getFlashMapManager()를 사용해서 가져올 수 있음
+
+```java
+FlashMap fm = RequestContextUtils.getOutputFlashMap(request);
+fm.put("message", "abcd");
+fm.setTargetRequestPath("/user/list");
+fm.startExpirationPeriod(10);
+
+Map<?, String> fm = RequestContextUtils.getInputFlashMap(request);
+String message = fm.get("message");
+model.addAttribute("flashMessage", message);
+```
+
+#### 플래시 맵 매니저 전략
+
+- 플래시 맵 정보를 저장하고 가져오는 방법이 스프링 3.1에 새로운 DispatcherServlet 전략으로 추가됨
+
+### WebApplicationInitializer를 이용한 컨텍스트 등록
+
+- 스프링 3.1에서는 ServletContainerInitializer를 이용하면 스프링 컨텍스트 설정과 등록 작업에 자바 코드를 이용할 수 있음
+
+```java
+public interface WebApplicationInitializer {
+    void onStartup(ServletContext servletContext) throws ServletException;
+}
+```
+
+#### 루트 웹 컨텍스트 등록
+
+
+```xml
+<listner>
+  <listner-class>org.springframework.web.context.ContextLoaderListener
+  </listner-class>
+</listner>
+```
+
+```java
+ServletContextListener listener = new ContextLoaderListener();
+servletContext.addListener(listener);
+```
