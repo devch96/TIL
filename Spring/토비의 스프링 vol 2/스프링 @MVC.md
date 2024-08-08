@@ -184,4 +184,102 @@ public abstract class GenericController<T, K, S> {
   - 메서드 파라미터, 메서드 레벨에 적용 가능함
   - 이름 그대로 모델로 사용되는 오브젝트
   - 하지만 ModelAndView와 조금 의미가 다름
-  -  
+  - 클라이언트로부터 컨트롤러가 받는 요청정보 중에서 하나 이상의 값을 가진 오브젝트 형태로 만들 수 있는
+  구조적인 정보를 @ModelAttribute 모델이라고 부름
+    - 컨트롤러가 전달받는 오브젝트 형태의 정보
+  ```java
+  @RequestMapping("/user/add", method=RequestMethod.POST)
+  public String add(@ModelAttribute User user) {
+    userService.add(user);
+  }
+  ```
+  - @ModelAttribute도 생략이 가능함
+    - @RequestParam은 String, int 라면 간주
+    - 그 외 오브젝트는 @ModelAttribute로 간주
+  - 컨트롤러가 리턴하는 모델에 파라미터로 전달한 오브젝트를 자동으로 추가해줌
+    - 모델의 이름은 기본적으로 파라미터 타입의 이름
+    - 이름을 바꿀 수 있음
+- Errors, BindingResult
+  - @ModelAttribute가 붙은 파라미터를 처리할 때는 @RequestParam과 달리 검증(validation) 작업이 일어남
+  - @ModelAttribute는 Errors나 BindingResult 파라미터를 함께 사용하지 않으면 스프링에서 요청 파라미터의 타입이나 값에 문제가
+  없도록 애플리케이션이 보장해준다고 생각한다
+  - BindingResult나 Errors를 사용할 때 주의할 점은 파라미터의 위치
+    - @ModelAttribute 파라미터 뒤에 나와야 함
+    - 자신의 바로 앞에 있는 @ModelAttribute 파라미터의 검증 작업에서 발생한 오류만을 전달해주기 때문
+- SessionStatus
+  - 현재 세션을 다룰 수 있는 오브젝트
+  - 세션 안에 불필요한 오브젝트를 방치하는 것은 일종의 메모리 누수이므로 필요 없어지면 확실하게 제거해야 함
+- @RequestBody
+  - HTTP 요청 본문(body) 부분이 그대로 전달됨
+  - XML이나 JSON 기반의 메시지를 사용하는 요청의 경우에는 이 방법이 매우 유용함
+  - AnnotationMethodHandlerAdapter에는 HttpMessageConverter 타입의 메시지 변환기가 여러 개 등록되어 있음
+  - @RequestBody가 붙은 파라미터가 있으면 HTTP 요청의 미디어 타입과 파라미터 타입을 처리할 수 있는 것이 있다면 HTTP 요청의 본문 부분을
+  통째로 변환해서 지정된 메서드 파라미터로 전달해줌
+  - 보통 @ResponseBody와 함께 사용함
+- @Value
+  - 주로 시스템 프로퍼티나 다른 빈의 프로퍼티 값 또는 좀 더 복잡한 SpEL을 이용해 클래스의 상수를 읽어오거나 특정 메서드를 호출한 결과 값, 조건식 등을 넣을 수 있음
+  ```java
+  @RequestMapping
+  public String hello(@Value("#{systemProperties['os.name']}") String osName)
+  ```
+- @Valid
+  - JSR-303의 빈 검증기를 이용해서 모델 오브젝트를 검증하도록 지시하는 지시자
+
+### 리턴 타입의 종류
+
+- @MVC 컨트롤러 메서드에는 리턴 타입도 다양하게 결정할 수 있음
+- 컨트롤러가 DispatcherServlet에 돌려줘야 하는 정보는 모델과 뷰
+- @Controller 메서드의 리턴 타입은 기타 정보와 결합해서 ModelAndView로 만들어짐
+
+#### 자동 추가 모델 오브젝트와 자동생성 뷰 이름
+
+- @ModelAttribute 모델 오브젝트 또는 커맨드 오브젝트
+  - @ModelAttribute 또는 생략하였지만 기본 타입이 아닌 커맨드 오브젝트라면 컨트롤러가 리턴하는 모델에 추가됨
+- Map, Model, ModelMap 파라미터
+  - 이런 파라미터에 추가한 오브젝트는 DispatcherServlet을 거쳐 뷰에 전달되는 모델에 자동으로 추가됨
+- @ModelAttribute 메서드
+  - @ModelAttribute가 붙은 메서드는 컨트롤러 클래스 안에 정의하지만 컨트롤러 기능을 담당하지 않음
+  - 클래스 내의 다른 컨트롤러 메서드의 모델에 자동으로 추가됨
+- BindingResult
+  - 모델 맵에 추가될 때의 키는 'org.springframework.validation.BindingResult.모델이름'
+- ModelAndView
+  - 컨트롤러가 리턴해야 하는 정보를 담고 있는 가장 대표적인 타입
+- String
+  - 메서드의 리턴 타입이 스트링이면 리턴 값은 뷰 이름으로 사용됨
+  - 모델은 파라미터로 맵을 가져와 넣어주고 리턴 값은 뷰 이름을 스트링 타입으로 선언하는 방식은 흔히 사용되는 방법
+- void
+  - 메서드의 리턴 타입이 void면 RequestToViewNameResolver 전략을 통해 자동생성되는 뷰 이름이 사용됨
+  - URL과 뷰 이름을 일관되게 통일할 수 있다면 void형의 사용도 고려해볼만 함
+- 모델 오브젝트
+  - 모델에 추가할 오브젝트가 하나뿐이라면, Model 파라미터를 받아서 저장하는 대신 모델 오브젝트를 바로 리턴해도 됨
+  - 스프링은 리턴 타입이 미리 지정된 타입이나 void가 아닌 단순 오브젝트라면 이를 모델 오브젝트로 인식해서 모델에 자동으로 추가함
+- View
+  - 뷰 이름 대신 뷰 오브젝트를 사용할 수 있음
+- @ResponseBody
+  - @RequestBody와 비슷한 방식으로 동작함
+  - HTTP 응답의 메시지 본문으로 전환됨
+
+### @SessionAttributes와 SessionStatus
+
+- HTTP 는 Stateless 하기 때문에 하나의 요청을 처리한 후에는 사용했던 모든 리소스를 정리함
+- 애플리케이션은 기본적으로 상태를 유지할 필요가 있으므로 세션을 사용함
+
+#### 도메인 중심 프로그래밍 모델과 상태 유지를 위한 세션 도입의 필요성
+
+- 수정 기능을 위해서는 최소한 두 번의 요청이 서버로 전달돼야 함
+  - 수정 폼을 띄워달라는 요청
+  - 정보를 수정하고 수정 완료 요청
+- 하지만 수정한 폼의 필드 값에 오류가 있는 경우에 에러 메시지와 함께 수정 화면을 다시 보여줘야함
+
+--------------
+
+## 모델 바인딩과 검증
+
+- @ModelAttribute가 지정된 파라미터를 @Controller 메서드에 추가하면 세 가지 작업이 자동으로 진행됨
+  - 파라미터 타입의 오브젝트를 만듬
+    - @ModelAttribute User user 라는 파라미터 선언이 있다면 User 타입의 오브젝트를 생성함
+      - 디폴트 생성자가 반드시 필요함
+    - @SessionAttributes에 의해 세션에 저장된 모델 오브젝트가 있다면 가져옴
+  - 준비된 모델 오브젝트의 프로퍼티에 웹 파라미터를 바인딩함
+    - 스프링에 준비되어 있는 기본 프로퍼티 에디터를 이용해 HTTP 파라미터 값을 모델의 프로퍼티 타입에 맞게 전환함
+    - 
