@@ -282,4 +282,71 @@ public abstract class GenericController<T, K, S> {
     - @SessionAttributes에 의해 세션에 저장된 모델 오브젝트가 있다면 가져옴
   - 준비된 모델 오브젝트의 프로퍼티에 웹 파라미터를 바인딩함
     - 스프링에 준비되어 있는 기본 프로퍼티 에디터를 이용해 HTTP 파라미터 값을 모델의 프로퍼티 타입에 맞게 전환함
-    - 
+
+### PropertyEditor
+
+- 스프링이 기본적으로 제공하는 바인딩용 타입 변환 API
+  - 스프링의 API가 아닌 자바빈 표준에 정의된 인터페이스
+- PropertyEditor는 원래 비주얼 환경에서의 프로퍼티 창과 자바빈 컴포넌트를 위해 설계됐으므로 인터페이스를 보면 AWT를 사용하믄 paintValue() 메서드를 갖고있기도 함
+
+#### 디폴트 프로퍼티 에디터
+
+- URL이 /hello?charset==UTF-8 이라면 charset 파라미터는 UTF-9로 설정된 Charset 타입의 오브젝트를 받음
+
+```java
+@RequestMapping("/hello")
+public void hello(@RequestParam Charset charset, Model model)
+```
+
+- UTF-8 이라는 문자열로 들어온 파라미터를 바인딩 과정에서 메서드 파라미터 타입인 Charset으로 전환하기 위해 스프링이 디폴트로 등록해준
+CharsetEditor를 적용했기 때문
+- 바인딩 과정에서는 변환할 파라미터 또는 모델 프로퍼티의 타입에 맞는 프로퍼티 에디터가 자동으로 선정돼서 사용됨
+- 스프링이 지원하지 않는 타입을 파라미터로 사용한다면 직접 프로퍼티 에디터를 만들어서 적용할 수 있음
+
+#### 커스텀 프로퍼티 에디터
+
+```java
+public enum Level {
+    GOLD(3, null), SILVER(2, GOLD), BASIC(1, SILVER);
+    
+    public int intValue() {return value;}
+  
+    public static Level valueOf(int value) {
+        switch(value) {
+          case 1: return BASIC;
+          case 2: return SILVER;
+          case 3: return GOLD;
+          default: throw new AssertionError("Unknown value: " + value);
+        }
+    } 
+}
+```
+
+- URL에 level=1이라고 파라미터를 줘서 실행시키면 String 타입을 Level 타입으로 변환할 수 없어 HTTP 500 에러를 만남
+  - ConversionNotSupportedException
+- PropertyEditor에서 변한을 위해 사용되는 메서드는 총 네가지가 있음
+- HTTP 요청 파라미터와 같은 문자열은 스트링 타입으로 서블릿에서 가져옴
+- 스프링이 스트링 타입의 문자열을 변경할 타입의 오브젝트로 만들 때는 두 개의 메서드가 사용됨
+  - setAsText() 메서드를 이용해 스트링 타입의 문자열을 넣고 getValue()로 변환된 오브젝트를 가져옴
+  - 반대로 오브젝트를 다시 문자열로 바꿀때는 setValue()로 오브젝트를 넣고 getAsText()로 문자열을 가져옴
+- getValue()와 setValeu()는 오브젝트를 저장하고 가져올 때 사용하는 것으로 손댈 것 없고 setAsText()와 getAsText() 두 가지를 구현해야 함
+
+```java
+public class levelPropertyEditor extends PropertyEditorSupport {
+    public String getAsText() {
+        return String.valueOf(((Level) this.getValue()).intValue());
+    }
+    
+    public void setAsText(String text) throws IllegalArgumentException {
+        this.setValue(Level.valueOf(Integer.parseInt(text.trim())));
+    }
+}
+```
+
+#### @InitBinder
+
+- @MVC에는 스프링 컨테이너에 정의된 디폴트 프로퍼티 에디터만 등록되어 있음
+  - LevelPropertyEditor를 추가해야 함
+- @Controller 메서드를 호출해줄 책임이 있는 AnnotationMethodHandlerAdapter는 @RequestParam이나 @ModelAttribute, @PathVariable 등처럼
+HTTP 요청을 파라미터 변수에 바인딩해주는 작업이 필요한 애노테이션을 발견하면 먼저 WebDataBinder를 만듬
+  - WebDataBinder는 HTTP 요청으로부터 가져온 문자열을 파라미터 타입의 오브젝트로 변환하는 기능이 포함되어 있음
