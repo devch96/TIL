@@ -350,3 +350,136 @@ public class levelPropertyEditor extends PropertyEditorSupport {
 - @Controller 메서드를 호출해줄 책임이 있는 AnnotationMethodHandlerAdapter는 @RequestParam이나 @ModelAttribute, @PathVariable 등처럼
 HTTP 요청을 파라미터 변수에 바인딩해주는 작업이 필요한 애노테이션을 발견하면 먼저 WebDataBinder를 만듬
   - WebDataBinder는 HTTP 요청으로부터 가져온 문자열을 파라미터 타입의 오브젝트로 변환하는 기능이 포함되어 있음
+  - 커스텀 프로퍼티 에디터를 @RequestParam 과 같은 메서드 파라미터 바인딩에 적용하려면 WebDatabinder에 프로퍼티 에디터를 직접 등록해주어야 함
+- 문제는 WebDataBinder는 외부로 직접 노출되지 않음
+  - 스프링이 제공하는 WebDataBinder 초기화 메서드를 이용해야 함
+
+```java
+@InitBinder
+public void initBinder(WebDataBinder dataBinder) {
+    dataBinder.registerCustomEditor(Level.class, new LevelPropertyEditor());
+}
+```
+
+- @InitBinder가 붙은 initBinder() 메서드는 메서드 파라미터를 바인딩하기 전에 호출됨
+- @InitBinder에 의해 등록된 커스텀 에디터는 같은 컨트롤러의 메서드에서 HTTP 요청을 바인딩하는 모든 작업에 적용됨
+  - WebDataBinder의 바인딩 적용 대상은 RequestParam, CookieValue, RequestHeader, PathVariable, ModelAttribute
+- WebDataBinder에 커스텀 프로퍼티 에디터를 등록하는 방법 두 가지
+  - 특정 타입에 무조건 적용되는 프로퍼티 에디터 등록
+    - 적용 타입과 프로퍼티 에디터 두 개를 파라미터로 받는 registerCustomEditor()를 사용해 등록했다면
+    해당 타입을 가진 바인딩 대상이 나오면 항상 프로퍼티 에디터가 적용됨
+    - 디폴트 프로퍼티 에디터에서는 지원하지 않는 타입이라면 이 방식을 사용하는 것이 적절함
+  - 특정 이름의 프로퍼티에만 적용되는 프로퍼티 에디터 등록
+    - 같은 타입이지만 프로퍼티의 이름이 일치하지 않는 경우에는 등록한 커스텀 프로퍼티 에디터가 적용되지 않음
+    - 이름이 포함된 프로퍼티 에디터의 등록은 이미 프로퍼티 에디터가 존재하는 경우에 사용하기 적합함
+
+#### WebBindingInitializer
+
+- @InitBinder 메서드에서 WebDataBinder에 추가한 커스텀 프로퍼티 에디터는 메서드가 있는 컨트롤러 클래스 안에서만 동작함
+- 애플리케이션 전반에 걸쳐 폭넓게 필요한 경우라면 WebBindingInitializer를 이용하면 됨
+
+```java
+public class MyWebBindingInitializer implements WebBindingInitializer {
+    public void initBinder(WebDataBinder binder ,WebRequest request) {
+        binder.registerCustomEditor(Level.class, new LevelPorpertyEditor());
+    }
+}
+```
+
+- WebBindingInitialzer를 구현해서 만든 클래스를 빈으로 등록하고 @Controller를 담당하는 어댑터 핸들러인 AnnotationMethodHandlerAdapter의 webBindingInitializer 프로펕티에
+DI 해줌
+  - AnnotationMethodHandlerAdapter도 직접 빈으로 등록해야 함
+
+#### 프로토타입 빈 프로퍼티 에디터
+
+- 지금까지는 프로퍼티 바인딩을 할 때마다 매번 새로운 프로퍼티 에디터 오브젝트를 만들어 사용함
+  - new 키워드
+- 프로퍼티 에디터를 싱글톤 빈으로 등록해두고 사용하면 안되나?
+  - 안됨
+  - 프로퍼티 에디터에 의해 타입이 변경되는 오브젝트는 한 번은 프로퍼티 에디터 오브젝트 내부에 저장이 됨
+    - 짧은 시간이지만 상태가 있음
+- 프로토타입 빈을 등록하고 가져옴
+
+### Converter와 Formatter
+
+- 여러 가지 장점에도 불구하고 PropertyEditor는 매번 바인딩을 할 때마다 새로운 오브젝트를 만들어야 한다는 약점이 있음
+- 스프링 3.0에는 PropertyEditor를 대신할 수 있는 새로운 타입 변환 API가 도입됨
+  - Converter 인터페이스
+- PropertyEditor와 달리 Converter는 변환 과정에서 메서드가 한 번만 호출됨
+  - 변환 작업 중에 상태를 인스턴스 변수로 저장하지 않음
+  - 멀티스레드 환경에서 안전
+
+#### Converter
+
+- 문자열과 오브젝트 사이의 양방향 변환 기능을 제공하는 PropertyEditor와 다르게 Converter 메서드는 소스 타입에서 타깃 타입으로의 단방향 변환만 지원함
+  - 컨버터를 하나 더 만들면 양방향 변환이 가능
+- PropertyEditor 처럼 한 쪽이 스트링으로 고정되어 있지 않고 소스와 타깃의 타입을 임의로 지정할 수 있음
+
+```java
+public class LevelToStringConverter implements Converter<Level, String> {
+    public String convert(Level level) {
+        return String.valueOf(level.intValue());
+    }
+}
+
+public class StringToLevelConverter implements Converter<String, Level> {
+    public Level convert(String text) {
+        return Level.valueOf(Integer.parseInt(text));
+    }
+}
+```
+
+#### ConversionService
+
+- 컨트롤러의 바인딩 작업에도 이렇게 만든 컨버터를 적용할 수 있음
+- PropertyEditor 처럼 Converter 타입의 컨버터를 개별적으로 추가하는 대신 ConversionService 타입의 오브젝트를 통해 WebDataBinder에 설정해주어야 함
+- ConversionService는 여러 종류의 컨버터를 이용해서 하나 이상의 타입 변환 서비스를 제공해주는 오브젝트를 만들 때 사용하는 인터페이스
+  - 보통 GenericConversionService 클래스를 빈으로 등록하여 사용함
+- 스프링 3.0에 추가된 Converter 외에도 GenericConverter와 ConverterFactory를 이용해서 만들 수 있음
+  - GenericConverter를 이용하면 하나 이상의 소스-타깃 타입 변환을 한 번에 처리할 수 있는 컨버터를 만들 수 있음
+  - 필드 컨텍스트를 제공받을 수 있음
+    - 필드 컨텍스트는 모델의 프로퍼티에 대한 바인딩 작업을 할 때 제공받을 수 있는 메타정보
+
+#### Formatter와 FormattingConversionService
+
+- 포맷터는 스트링 타입의 폼 필드 정보와 컨트롤러 메서드의 파라미터 사이에 양방향으로 적용할 수 있도록 두 개의 변환 메서드를 갖고 있음
+- Formatter는 그 자체로 Converter와 같이 스프링이 기본적으로 지원하는 범용적인 타입 변환 API가 아님
+  - GenericConversionService에 등록할 수 없음
+  - 대신 Formatter 구현 오브젝트를 GenericConverter 타입으로 포장해서 등록해주는 기능을 가진 FormattingConversionService
+  를 통해서만 적용될 수 있음
+- Formatter 인터페이스는 오브젝트를 문자열로 변환해주는 print() 메서드와 문자열을 오브젝트로 변환해주는 parse() 메서드 두 개로 구성되어 있음
+- Formatter를 직접 구현해서 사용하기보다는 FormattingConversionServiceFactoryBean을 통해 기본적으로 등록되는 몇 가지 유용한 애노테이션 기반 포맷터를
+활용하는 방법만 익혀도 됨
+- @NumberFormat
+  - 숫자 변환을 지원하는 포맷터
+  - 문자열로 표현된 숫자를 java.lang.Number 타입의 오브젝트로 상호 변환해줌
+  - 엘리먼트로 style과 pattern을 지정할 수 있음
+    - style은 Style 이넘의 NUMBER, CURRENCY, PERCENT 세 가지를 설정할 수 있음
+    - 현재 지역정보를 기준으로 해서 그에 맞는 숫자, 통화, 퍼센트 표시를 지원함
+    - 다중 지역 서비스를 제공하는 애플리케이션에 유용한 기능
+    - Locale에 정의된 표준 포맷에는 없는 숫자패턴을 사용하고 싶다면 pattern 엘리먼트를 사용
+  
+  ```java
+  class Product {
+      @NumberFormat("$###,##0,00")
+      BigDecimal price;
+  }
+  ```
+  - @NumberFormat 애노테이션을 이용한 바인딩 기능을 사용하려면 FormattingConversionService에 NumberFormatAnnotationFormatterFactory를
+  등록하도록 코드를 작성해야 함
+
+#### 바인딩 기술의 적용 우선순위와 활용 전략
+
+- 사용자 정의 타입의 바인딩을 위한 일괄 적용: Converter
+  - 애플리케이션에서 정의한 타입이면서 모델에서 자주 활용되는 타입이라면 컨버터로 만들고 컨버전 서비스로 묶어서 일괄 적용하는 것이 편리함
+  - 프로퍼티 에디터로 만들면 매번 오브젝트가 새로 만들어지므로, 싱글턴으로 사용할 수 있는 컨버터가 유리
+- 필드와 메서드 파라미터, 애너테이션 등의 메타정보를 활용하는 조건부 변환 기능: ConditionalGenericConverter
+  - 조건을 변환 로직에 참고할 필요가 있다면 ConditionalGenericConverter를 이용해야 함
+  - GenericConversionService에 등록하여 일괄 적용할 수 있음
+- 애너테이션 정보를 활용한 HTTP 요청과 모델 필드 바인딩: AnnotationFormatterFactory와 Formatter
+  - @NumberFormat이나 @DateTimeFormat처럼 필드에 부여하는 애너테이션 정보를 이용해 변환 기능을 지원하려면 AnnotationFormatterFacotry를
+  이용해 애노테이션에 따른 포맷터를 생성해주는 팩토리를 구현해야 함
+- 특정 필드에만 적용되는 변환 기능: PropertyEditor
+  - 특정 모델의 필드에 제한해서 변환 기능을 적용해야 할 경우
+  - 커스텀 프로퍼티 에디터를 만들어서 컨트롤러의 @InitBinder에서 필드 조건을 추가해서 등록할 수 있음
+  - 
