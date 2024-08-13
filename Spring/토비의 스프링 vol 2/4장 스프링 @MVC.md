@@ -482,4 +482,188 @@ public class StringToLevelConverter implements Converter<String, Level> {
 - 특정 필드에만 적용되는 변환 기능: PropertyEditor
   - 특정 모델의 필드에 제한해서 변환 기능을 적용해야 할 경우
   - 커스텀 프로퍼티 에디터를 만들어서 컨트롤러의 @InitBinder에서 필드 조건을 추가해서 등록할 수 있음
-  - 
+
+### WebDataBinder 설정 항목
+
+- WebDataBinder는 HTTP 요청정보를 컨트롤러 메서드의 파라미터나 모델에 바인딩할 때 사용되는 바인딩 오브젝트
+
+#### allowedFields, disallowedFields
+
+- 도메인 오브젝트 방식을 사용하는 경우에는 @ModelAttribute로 HTTP 요청을 전달받을 때 보안 문제에 신경을 써야 함
+  - 폼을 통해 전달되는 HTTP 요청 파라미터는 모델 오브젝트의 프로퍼티 중 일부인 경우가 대부분
+  - 회원 정보 수정 폼에는 수정해도 되는 연락처, 주소 등만 표시되어있지만 악의적인 사용자가 level, admin, point와 같은 중요한 정보의 프로퍼티에
+  해당하는 폼 필드를 추가해서 보낼 수 있음
+- 스프링은 WebDataBinder 안에 바인딩이 허용된 필드 목록을 넣을 수 있는 allowedFields와 금지 필드 목록을 넣을 수 있는 disallowedFields 프로퍼티를
+설정할 수 있음
+  - 전자는 매우 적극적인 방법으로 허용하는 것 외에는 모두 막음
+  - 후자는 기본적으로 다 허용하지만 특별한 이름을 가진 요청 파라미터만 막음
+- 사용 방법은 프로퍼티 에디터 등을 설정하는 경우와 동일하게 @InitBinder나 WebBindingInitializer에서 WebDataBinder 오브젝트의
+프로퍼티를 설정함
+
+```java
+@InitBinder
+public void initBinder(WebDataBinder dataBinder) {
+    dataBinder.setAllowedFields("name", "email","tel");
+}
+```
+
+- 허용된 필드 외의 이름을 가진 HTTP 파라미터는 무시됨
+- 필드 이름은 *name, tel*, *type* 과 같이 와일드카드를 이용해 지정할 수 있음
+
+#### requiredFields
+
+- 컨트롤러가 자신이 필요로 하는 필드 정보가 폼에서 모두 전달됐는지를 확인하고 싶을 때가 있음
+- 가장 원시적인 바업은 HttpServletRequest.getParameter()로 가져온 값이 null인지 확인하는 것
+
+```java
+String name = request.getParameter("name");
+if (name == null ) {
+    throw new MissingSErvletRequestParameterException(....);
+}
+user.setName(name);
+```
+
+- 스프링이 제공하는 유틸리티 메서드를 사용할 수 있다
+- getRequiredStringParameter() 메서드는 파라미터가 존재하지 않으면 예외를 발생시킴
+
+```java
+user.setName(ServletRequestUtils.getRequiredStringParameter(request, "name"));
+```
+
+- 코드에 의해 바인딩을 하는 대신 전달된 HTTP 파라미터를 알아서 모델 오브젝트에 바인딩하는 경우 필수 파라미터가 없다고 예외를 발생시키거나 하진 않음
+- 필수 HTTP 파라미터를 WebDataBinder에 알려주고, 바인딩 시 필수 파라미터 중에서 빠진 게 있다면 바인딩 에러로 처리하도록 만들 수 있음
+- WebDataBinder의 setRequiredFields() 메서드를 호출해서 필수 파라미터의 이름을 넣어줌
+
+#### filedMarkerPrefix
+
+- 스프링은 특별한 접두어가 붙은 필드 이름을 가진 마커 히든 필드를 추가하는 방식을 사용함
+- 이름에 해당하는 프로퍼티 값을 리셋해줌
+
+### Validator와 BindingResult, Errors
+
+- @ModelAttribute로 지정된 모델 오브젝트의 바인딩 작업이 실패로 끝나는 경우 두 가지
+  - 타입 변환이 불가능한 경우
+  - 타입 변환은 성공했지만 검증기(validator)를 이용한 검사를 통과하지 못했기 때문
+- 스프링은 검증 과정에서 사용할 수 있는 Validator라는 이름의 표준 인터페이스를 제공함
+- Validator를 통한 검증 과정의 결과는 BindingResult를 통해 확인할 수 있음
+  - BindingResult는 Errors의 서브인터페이스
+
+#### Validator
+
+- @Controller로 HTTP 요청을 @ModelAttribute 모델에 바인딩할 때 주로 사용됨
+- 필수 입력조건은 브라우저에서 자바스크립트를 통해서도 확인이 가능함
+  - 그러면 서버에서는 안해도 될까?
+- 자바스크립트의 검증은 서버로 자주 전송이 일어나는 것을 막아주려는 목적으로만 사용해야 함
+  - 자바스크립트 검증을 통과했다고 서버의 검증 작업을 생략하면 위험함
+  - 브라우저에서 자바스크립트가 동작하지 않도록 만들수도 있고 스크립트를 무시하고 폼을 조작해서 오류가 있는 정보를 강제로
+  서버로 보낼 수도 있기 때문
+- Validator는 빈으로 등록이 가능하므로 이를 컨트롤러에서 DI 받아 두고 각 메서드에서 필요에 따라 직접 validate() 메서드를 호출해서 검증 작업을
+진행해도 좋음
+
+```java
+@Controller
+public class UserController {
+    @Autowired
+    UserValidator validator;
+    
+    @RequestMapping("/add")
+    public void add(@ModelAttribute User user, BindingResult result) {
+        this.validator.validate(user,reuslt);
+        if(result.hasErrors()){
+          ...
+        }else {
+          ...
+        }
+    }
+}
+```
+
+- Validator를 적용하는 두 번째 방법은 @javax.validation.Valid 애노테이션을 사용하는 것
+- @Valid 애노테이션을 사용하면 내부적으로 Validator를 이용한 검증이 수행됨
+
+```java
+@Controller
+public class UserController {
+    @Autowired
+    UserValidator validator;
+    
+    @InitBinder
+    public void initBinder(WebDataBinder dataBinder) {
+        dataBinder.setValidator(this.validator);
+    }
+    
+    @RequestMapping("/add")
+    public void add(@ModelAttribute @Valid User user, BindingResult result){
+      ...
+    }
+}
+```
+
+- 비즈니스 로직이 적용된 Validator는 서비스 계층에서도 활용할 수 있음
+- 여러 개의 서비스 계층 오브젝트에서 반복적으로 같은 검증 기능이 사용된다면 Validator로 검증 코드를 분리하고 이를 DI 받아 사용할 수 있음
+
+#### JSR-303 빈 검증 기능
+
+- JSR-303의 빈 검증 기능은 스프링에서 LocalValidatorFactoryBean을 이용해 사용한다
+  - 일종의 어댑터
+- JSR-303의 빈 검증 기술의 특징은 모델 오브젝트의 필드에 달린 제약조건 애노테이션을 이용해 검증을 진행할 수 있다는 점
+- @NotNull
+  - 필드의 값이 null이 아님을 확인하는 제약 조건
+- @Min
+  - 최소값을 지정할 수 있는 제약조건
+
+#### BindingResult와 MessageCodeResolver
+
+- BindingResult에는 모델의 바인딩 작업 중에 나타난 타입 변환 오류정보와 검증 작업에서 발견된 검증 오류정보가 모두 저장됨
+  - 이 오류정보는 컨트롤러에 의해 폼을 다시 띄울 때 활용함
+- 스프링은 기본적으로 message.properties와 같은 프로퍼티 파일에 담긴 메시지를 가져와 에러 메시지로 활용함
+
+#### HTTP 요청부터 컨트롤러 메서드까지
+
+- @ModelAttribute 메서드 파라미터
+  - 컨트롤러 메서드의 모델 파라미터와 @ModelAttribute로부터 모델 이름, 모델 타입 정보를 가져옴
+- @SessionAttribute 세션 저장 대상 모델 이름
+  - 모델 이름과 동일한 것이 있다면 HTTP 세션에 저장해둔 것이 있는지 확인
+  - 있다면 모델 오브젝트를 새로 만드는 대신 세션에 저장된 것을 가져와 사용함
+- WebDataBinder에 등록된 프로퍼티 에디터, 컨버젼 서비스
+  - 커스텀 프로퍼티 에디터, 컨버전 서비스, 디폴트 프로퍼티 에디터 순으로 적용됨
+  - 타입 변환에 실패하면 BindingResult 오브젝트에 필드 에러가 등록됨
+- WebDataBinder에 등록된 검증기
+  - 모델 파라미터에 @Valid가 지정되어 있다면 검증기로 모델을 검증함
+  - 검증 결과는 BindingReuslt 오브젝트에 등록됨
+- ModelAndView의 모델 맵
+  - 모델 오브젝트는 컨트롤러 메서드가 실행되기 전에 임시 모델 맵에 저장됨
+  - 저장된 모델 오브젝트는 컨트롤러 메서드의 실행을 마친 뒤에 추가로 등록된 모델 오브젝트와 함께 ModelAndView 모델 맵에 담겨 DispatcherServlet으로 전달됨
+- 컨트롤러 메서드와 BindingResult 파라미터
+  - BindingResult는 ModelAndView의 모델 맵에도 자동으로 추가됨
+
+#### 컨트롤러 메서드로부터 뷰까지
+
+- ModelAndView의 모델 맵
+  - 컨트롤러 메서드의 실행을 마치고 최종적으로 DispatcherServlet이 전달받는 결과
+  - 폼의 정보를 담은 @ModelAndView 오브젝트 뿐 아니라 바인딩과 검증 결과를 담은 BindingResult 타입의 오브젝트도 ModelAndView의 모델 맵에 자동으로 추가됨
+- WebDatabinder에 기본적으로 등록된 MessageCodeResolver
+  - MessageCodeResolver는 바인딩 작업 또는 검증 작업에서 등록된 에러 코드를 확장해서 메시지 코드 후보 목록을 만들어줌
+- 빈으로 등록된 MessageSource와 LocaleResolver
+  - LocaleResolver에 의해 결정된 지역정보와 MessageCodeResolver가 생성한 메시지 코드 후보 목록을 이용해 MessageSource가 뷰에 출력할 최종 에러 메시지를 결정함
+  - MessageSource는 기본적으로 message.properties 파일을 이용하는 ResourceBundleMessageSource를 등록하여 사용함
+- @SessionAttribute 세션 저장 대상 모델 이름
+  - 모델 맵에 담긴 모델 중에서 @SessionAttribute로 지정한 이름과 일치하는 것이 있다면 세션에 저장됨
+- 뷰의 EL과 스프링 태그 또는 매크로
+  - 뷰에 의해 최종 컨텐츠가 생성될 때 모델 맵으로 전달된 모델 오브젝트는 뷰의 표현식 언어를 통해 참조돼서 콘텐츠에 포함됨
+
+--------------
+
+## JSP 뷰와 form 태그
+
+- 모델을 참고해서 콘텐츠를 작성하는 뷰 개발은 각 뷰의 기술만 잘 알고 있다면 전혀 어렵지 않음
+  - 모델 오브젝트가 담긴 모델 맵을 어떻게 참조하는지만 알면 됨
+
+### EL과 spring 태그 라이브러리를 이용한 모델 출력
+
+#### JSP EL
+
+- 스프링은 JSP 뷰에서 모델 맵에 담긴 오브젝트를 JSP EL을 통해 접근할 수 있게 해줌
+- ${이름}
+
+#### 스프링 SpEL
