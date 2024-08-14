@@ -667,3 +667,52 @@ public class UserController {
 - ${이름}
 
 #### 스프링 SpEL
+
+- JSP 뷰에서 스프링 SpEL을 사용하려면 spring 태그 라이브러리를 추가해야 함
+
+```html
+<%@ taglib prefix="spring" uri="http://www.springframework.org/tags" %>
+```
+
+- spring:eval 태그를 사용해서 모델 이름이 포함된 표현식을 작성함
+
+```html
+<spring:eval expression="user.name"/>
+```
+
+- SpEL은 오브젝트의 메서드 호출이 가능함
+- SpEL은 논리, 산술 연산을 지원하고, 클래스를 지정하여 스태틱 메서드를 호출할 수 있음
+
+```html
+<spring:eval expression="user.toString()"/>
+<spring:eval expression='new java.text.DecimalFormat("###,##0.00").format(user.print)'
+```
+
+#### 지역화 메시지 출력
+
+- messages.properties 파일을 만들어두고 지역정보에 따라 메시지를 가져오는 것은 에러 메시지에서만 사용할 수 있는 방법이 아님
+- 화면에 출력할 일반 메시지에서도 지역정보에 따라 메시지를 가져와서 출력하려면 spring 태그 라이브러리의 message 태그를 사용하면 됨
+
+```html
+<spring:message code="greeting"/>
+```
+
+- LocaleResolver가 결정한 지역정보가 KOREA으로 되어 있다면 messages_ko.properties 파일에 greeting 키에 해당하는 메시지를 찾음
+  - 파일이 없다면 디폴트 파일인 messages.properties에서 메시지를 찾음
+
+----------
+
+## 메시지 컨버터와 AJAX
+
+- 메시지 컨버터는 XML이나 JSON을 이용한 AJAX 기능이나 웹 서비스를 개발할 떄 사용
+- HTTP 요청 프로퍼티를 모델 오브젝트의 프로퍼티에 개별적으로 바인딩하고 모델 오브젝트를 다시 뷰를 이용해 클라이언트로 보낼 콘텐츠로 만드는 대신
+HTTP 요청 메시지 본문과 HTTP 응답 메시지 본문을 통째로 메시지로 다루는 방식
+- 메시지 컨버터는 파라미터의 @RequestBody와 메서드에 부여한 @ResponseBody를 이용해서 쓸 수 있음
+- HTTP 요청 메서드에 따라서 GET과 POST로 나눔
+  - GET의 경우는 요청정보가 URL과 쿼리 스트링으로 제한되므로 @RequestBody를 사용하는 대신 @RequestParam이나 @ModelAttribute로 요청 파라미터를 전달받음
+  - POST의 경우라면 HTTP 요청 본문이 제공되므로 @RequestBody를 사용할 수 있음
+
+### 메시지 컨버터의 종류
+
+- 사용할 메시지 컨버터는 AnnotationMethodHandlerAdapter를 통해 등록함
+- 
