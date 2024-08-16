@@ -715,4 +715,20 @@ HTTP 요청 메시지 본문과 HTTP 응답 메시지 본문을 통째로 메시
 ### 메시지 컨버터의 종류
 
 - 사용할 메시지 컨버터는 AnnotationMethodHandlerAdapter를 통해 등록함
+- ByteArrayHttpMessageConverter
+  - byte[] 지원
+  - 미디어 타입은 다 지원
+  - @RequestBody로 전달받을 때 모든 종류의 HTTP 요청 메시지 본문을 byte 배열로 가져올 수 있음
+  - 반대로 @ResponseBody로 내보낼때는 컨텐츠 타입이 application/octet-stream으로 설정됨
+  - 컨트롤러가 byte 배열에 담긴 바이너리 정보를 클라이언트에게 줄 필요는 거의 없고 바이너리 포맷을 가진 정보를 주고받아야 하는 시스템이 있다면
+  활용할 수 있음
+- StringHttpMessageConverter
+  - 스트링 타입 지원
+  - 미디어 타입 다 허용
+  - HTTP 요청 본문을 그대로 스트링으로 가져올 수 있음
+  - HTTP가 기본적으로 텍스트 기반의 포맷이므로 가공하지 않은 본문을 직접 받아서 사용하고 싶다면 유용
+  - XML이나 JSON 같은 공개된 형식 외에 직접 정의한 문서 포맷이 있다면 적절한 파서를 붙여서 활용할 수 있도록 문자열로 받는것이 편함
+    - 좀 더 나은 방법은 해당 문서 포맷을 지원하는 HttpMessageConverter를 직접 개발해서 적용하는 것
+  - 응답의 경우는 컨텐츠 타입이 text/plain으로 전달됨
+  - 단순 문자열로 응답을 보내고 싶을 때는 @ResponseBody와 함께 스트링 리턴 값을 사용하면 됨
 - 
