@@ -731,4 +731,58 @@ HTTP 요청 메시지 본문과 HTTP 응답 메시지 본문을 통째로 메시
     - 좀 더 나은 방법은 해당 문서 포맷을 지원하는 HttpMessageConverter를 직접 개발해서 적용하는 것
   - 응답의 경우는 컨텐츠 타입이 text/plain으로 전달됨
   - 단순 문자열로 응답을 보내고 싶을 때는 @ResponseBody와 함께 스트링 리턴 값을 사용하면 됨
-- 
+- FormHttpMessageConverter
+  - 하나의 이름을 가진 여러 개의 파라미터가 사용될 수 있는 HTTP 요청 파라미터를 처리하기 적당
+  - @ModelAttribute를 이용해 바인딩하는 것이 훨씬 편리하고 유용함
+- SourceHttpMessageCOnverter
+  - application/xml, application/*+xml, text/xml 세 가지를 지원함
+  - XML 문서를 Source 타입의 오브젝트로 전환하고 싶을 때 유용하게 사용함
+- Jaba2RootElementHttpMessageConverter
+  - 디폴트 컨버터가 아님
+    - AnnotationMethodHandlerAdapter 빈의 messageConverters 프로퍼티에 등록하고 사용해야함
+- MarshallingHttpMessageConverter
+  - 디폴트 아님
+- MappingJacksonHttpMessageConverter
+  - 디폴트 아님
+  - Jackson ObjectMapper를 이용해 자바오브젝트와 JSON 문서를 자동변환해주는 메시지 컨버터
+
+----------
+
+## @MVC 확장 포인트
+
+### AnnotationmethodHandlerAdapter
+
+- 확장 포인트가 가장 많은 전략은 다양한 관례와 규칙을 이용해 컨트롤러 메서드를 호출해주는 AnnotationMethodHandlerAdapter
+
+#### SessionAttributeStore
+
+- @SessionAttribute에 의해 지정된 모델은 자동으로 HTTP 세션에 저장됐다가 다음 요청에 사용할 수 있음
+  - SessionAttributeStore 인터페이스의 구현 클래스에 의해 저장됐다가 다시 참조할 수 있는 것
+- HTTP 세션은 잘 다루지 않으면 웹 애플리케이션 메모리 누수의 원인이 될 수 있음
+  - SessionStatus의 setComplete()를 호출해주지 않으면 필요 없는 모델 오브젝트가 메모리에 계속 남음
+- 클러스터링을 통한 한 대 이상의 서버에 동시 적용할 경우 세션정보를 서버 사이에 복제하는 작업이 필요함
+- 고성능을 요구하면서 대규모의 사용자를 처리해야 하는 서버라면 @SessionAttribute를 적용하지 않아 HTTP 세션의 사용을 피하는 방법을 선택
+- SessionAttributeStore 인터페이스를 구현해서 세션정보를 저장하는 방법을 바꿈
+  - 세션 타임아웃이 되기 전에라도 일정 시간 이상 저장된 모델 오브젝트를 자동 삭제하는 등
+
+#### WebArgumentResolver
+
+- 컨트롤러 메서드의 파라미터로 사용할 수 있는 타입과 애노테이션의 종류는 20여 가지
+
+```java
+public void add(@CookieValue String encodedUserInfo) {
+    User currentUser = userService.decodeUserInfo(encodedUserInfo);
+}
+```
+
+- 매번 코드를 통해 정보를 가져오는 작업이 번거롭게 느껴진다면 WebArgumentResolver를 이용해 쿠키 값으로부터 사용자 정보를 가져와 메서드 파라미터로 전달받을 수 있음
+
+```java
+public interface WebArgumentResolver {
+    Object UNRESOLVED = new Object();
+    Object resolveArgument(MethodParameter methodParameter, NativeWebRequest webRequest) throws Exception;
+}
+```
+
+- 메서드 파라미터 정보와 웹 요청정보를 받아서 파라미터 타입과 애노테이션을 참고해 오브젝트를 생성할 수 있으면 이를 리턴하고 아니라면 UNRESOLVED를
+돌려주면 됨
