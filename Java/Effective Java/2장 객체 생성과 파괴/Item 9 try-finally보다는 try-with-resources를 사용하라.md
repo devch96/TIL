@@ -21,20 +21,19 @@ static String firstLineOfFile(String path) throws IOException{
 ```java
 static void copy(String src, String dst) throws IOException{
     InputStream in = new FileInputStream(src);
-    try{
+    try {
         OutputStream out = new FileOutputStream(dst);
-        try{
+        try {
             byte[] buf = new byte[BUFFER_SIZE];
             int n;
-            while ((n == in.read(buf)) >= 0){
-                out.write(buf,0,n);
+            while ((n == in.read(buf)) >= 0) {
+                out.write(buf, 0, n);
             }
-        }finally{
-        out.close();
+        } finally {
+            out.close();
         }
-        finally{
-            in.close();
-        }
+    } finally{
+        in.close();
     }
 }
 ```
